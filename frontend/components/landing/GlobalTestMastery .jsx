@@ -1,8 +1,16 @@
+'use client'
+
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Award, BookOpen, Monitor, Stethoscope } from 'lucide-react'
+import { motion } from "framer-motion"
+import { useInView } from "framer-motion"
+import { useRef } from "react"
 
 const GlobalTestMastery = () => {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+
   const testCards = [
     {
       icon: Award,
@@ -39,13 +47,18 @@ const GlobalTestMastery = () => {
   ]
 
   return (
-    <div className="py-12 md:pb-28 px-4">
+    <div className="py-12 md:pb-28 px-4" ref={ref}>
       <div className="max-w-7xl mx-auto">
         {/* Section Title */}
         <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground mb-4">
+          <motion.h2
+            initial={{ opacity: 0 }}
+            animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: 0.6 }}
+            className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground mb-4"
+          >
             Global Test Mastery
-          </h2>
+          </motion.h2>
         </div>
 
         {/* Test Cards Grid */}
@@ -53,8 +66,11 @@ const GlobalTestMastery = () => {
           {testCards.map((card, index) => {
             const IconComponent = card.icon
             return (
-              <div 
+              <motion.div
                 key={index}
+                initial={{ opacity: 0 }}
+                animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 + (index * 0.1) }}
                 className={`bg-gradient-to-br from-primary/10 via-accent/5 to-primary/20 border border-border rounded-lg px-6 py-8 shadow-md hover:shadow-lg transition-all duration-300 text-center ${card.borderStyle} p-6 py-10 text-center shadow-lg transition-all duration-300 flex flex-col min-h-[280px]`}
               >
                 {/* Icon */}
@@ -80,10 +96,10 @@ const GlobalTestMastery = () => {
                       size="sm"
                     >
                       {card.buttonText}
-                    </Button>
-                  </Link>
-                </div>
+                  </Button>
+                </Link>
               </div>
+            </motion.div>
             )
           })}
         </div>

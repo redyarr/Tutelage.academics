@@ -56,12 +56,7 @@ module.exports = (sequelize, DataTypes) => {
         comment: 'URL or path to downloadable PDF for this video'
       },
 
-      // Task-specific PDF reference (secondary)
-      taskPdf: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: 'URL or path to task-specific downloadable PDF for this video'
-      },
+      
 
       // Language levels field (supports single or multiple CEFR-like levels)
       level: {
@@ -96,6 +91,7 @@ module.exports = (sequelize, DataTypes) => {
       as: 'author',
       onDelete: 'CASCADE'
     });
+    Video.hasMany(models.TaskPdf, { foreignKey: 'resourceId', constraints: false, scope: { resourceType: 'video' }, as: 'taskPdfs' });
   };
 
   return Video;

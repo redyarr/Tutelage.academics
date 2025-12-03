@@ -108,35 +108,37 @@ export default function QuizQuestionsPage() {
     <div className="p-6">
       {/* Header with back button, refresh, and add button */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Quiz Questions</h1>
             <p className="text-muted-foreground mt-1">Manage quiz questions</p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push('/admin-dashboard/quiz')}
-            className="cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button onClick={handleCreate} className="cursor-pointer">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Question
-          </Button>
+        <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+          {/* BACK BUTTON */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push('/admin-dashboard/quiz')}
+              className="cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+          {/* REFRESH AND ADD BUTTONS */}
+          <div className='flex items-center justify-center gap-2'>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </Button>
+            <Button onClick={handleCreate} className="cursor-pointer">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Question
+            </Button>
+          </div>
         </div>
       </div>
 

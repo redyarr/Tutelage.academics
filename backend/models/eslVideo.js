@@ -36,11 +36,7 @@ module.exports = (sequelize, DataTypes) => {
         comment: 'Optional downloadable worksheet/resource PDF URL'
       },
 
-      taskPdf: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: 'Optional task-specific downloadable worksheet/resource PDF URL'
-      },
+      
       thumbnailUrl: {
         type: DataTypes.STRING(500),
         allowNull: true,
@@ -76,6 +72,7 @@ module.exports = (sequelize, DataTypes) => {
       as: 'author',
       onDelete: 'CASCADE'
     });
+    EslVideo.hasMany(models.TaskPdf, { foreignKey: 'resourceId', constraints: false, scope: { resourceType: 'esl_video' }, as: 'taskPdfs' });
   };
 
   return EslVideo;

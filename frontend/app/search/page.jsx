@@ -11,7 +11,6 @@ import { useSearchParams } from 'next/navigation'
 import BASE_URL from '@/app/config/url'
 import { BASE_URL_PROD } from '@/app/config/url'
 import { toast } from 'sonner'
-import Image from 'next/image'
 
 const SearchPage = () => {
   const [query, setQuery] = useState('')

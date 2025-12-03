@@ -86,7 +86,7 @@ const createBlog = async (req, res) => {
     const normalizedLevels = normalizeLevels(level);
 
     // Get PDF URLs from middleware (pdfUpload already processed them into req.body)
-    const { pdf, taskPdf } = req.body;
+    const { pdf } = req.body;
 
     // MAIN_MANAGER users queue creation for approval
     if (role === 'MAIN_MANAGER') {
@@ -98,7 +98,7 @@ const createBlog = async (req, res) => {
         description: description ?? discription ?? desccription ?? null,
         level: normalizedLevels,
         pdf: pdf || null,
-        taskPdf: taskPdfPath,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         tags: Array.isArray(tags)
           ? tags
           : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : [])
@@ -138,9 +138,18 @@ const createBlog = async (req, res) => {
       description: description ?? discription ?? desccription ?? null,
       level: normalizedLevels,
       pdf: pdf || null,
-      taskPdf: taskPdf || null,
       createdBy
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'blog', resourceId: blog.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     // Handle tags
     const tagNames = Array.isArray(tags)
@@ -334,7 +343,7 @@ const updateBlog = async (req, res) => {
     if (req.user.role === 'MAIN_MANAGER') {
       const normalizedLevelUpdate = level !== undefined ? normalizeLevels(level) : blog.level;
       const pdfUrl = req.body.pdf || blog.pdf;
-      const taskPdfUrl = req.body.taskPdf || blog.taskPdf;
+      const taskPdfsPayload = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : undefined;
 
       const payload = {
         title: title ?? blog.title,
@@ -344,7 +353,7 @@ const updateBlog = async (req, res) => {
         description: (description ?? discription ?? desccription ?? blog.description),
         level: normalizedLevelUpdate,
         pdf: pdfUrl,
-        taskPdf: taskPdfUrl,
+        taskPdfs: taskPdfsPayload,
         // capture tags for later application by admin approval
         tags: (tags !== undefined)
           ? (Array.isArray(tags) ? tags : String(tags).split(',').map(t => t.trim()).filter(Boolean))
@@ -394,7 +403,7 @@ const updateBlog = async (req, res) => {
 
     // Get PDF URLs from middleware (pdfUpload already processed them into req.body)
     const pdfUrl = req.body.pdf || blog.pdf;
-    const taskPdfUrl = req.body.taskPdf || blog.taskPdf;
+    const taskPdfsPayload = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
 
     await blog.update({
       title: title || blog.title,
@@ -403,9 +412,18 @@ const updateBlog = async (req, res) => {
       category: (category ?? tag ?? blog.category),
       description: (description ?? discription ?? desccription ?? blog.description),
       level: normalizedLevelUpdate,
-      pdf: pdfUrl,
-      taskPdf: taskPdfUrl
+      pdf: pdfUrl
     });
+
+    if (taskPdfsPayload.length) {
+      const rows = taskPdfsPayload
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'blog', resourceId: blog.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     // Update tags
     if (tags !== undefined) {

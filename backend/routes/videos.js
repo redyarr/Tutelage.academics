@@ -18,7 +18,7 @@ const {
   deleteVideo,
   searchVideosByTitle,
   get // Legacy function
-} = require('../controllers/videoController');
+} = require('../controllers/VideoController');
 const { isAuthenticated } = require('../middlewares/auth');
 const adminAuth = require('../middlewares/adminAuth');
 

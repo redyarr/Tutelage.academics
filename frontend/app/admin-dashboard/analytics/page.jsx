@@ -62,7 +62,8 @@ const AnalyticsPage = () => {
           fetch(`${BASE_URL}/api/website-analytics/country-stats?limit=5&days=${daysParam}`)
         ])
 
-        if (!statsRes.ok) throw new Error('Failed to fetch stats')
+        if (!statsRes.ok) console.log('failed to fetch stats');
+        
 
         const [statsData, dailyDataRes, pagesData, devicesData, countriesData] = await Promise.all([
           statsRes.json(),

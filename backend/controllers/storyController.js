@@ -65,7 +65,7 @@ async function ensureAnalytics(resourceId) {
 
 exports.createStory = async (req, res) => {
   try {
-    const { title, imageUrl, description, contentText, audioRef, pdf, taskPdf, wordCount, level, tags } = req.body;
+    const { title, imageUrl, description, contentText, audioRef, pdf, wordCount, level, tags } = req.body;
     const createdBy = req.user.id;
     const role = req.user.role;
     if (!title) {
@@ -97,7 +97,7 @@ exports.createStory = async (req, res) => {
         contentText,
         audioRef,
         pdf,
-        taskPdf,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         wordCount: wc,
         level: normalizedLevel,
         tags: tagNames
@@ -130,8 +130,18 @@ exports.createStory = async (req, res) => {
     }
 
     const story = await Story.create({
-      title, imageUrl, description, contentText, audioRef, pdf, taskPdf, wordCount: wc, level: normalizedLevel, createdBy
+      title, imageUrl, description, contentText, audioRef, pdf, wordCount: wc, level: normalizedLevel, createdBy
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'story', resourceId: story.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     // Attach tags only if we have valid tag names
     if (tagNames.length > 0) {
@@ -258,7 +268,7 @@ exports.getStoryById = async (req, res) => {
 exports.updateStory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, imageUrl, description, contentText, audioRef, pdf, taskPdf, wordCount, level, tags } = req.body;
+    const { title, imageUrl, description, contentText, audioRef, pdf, wordCount, level, tags } = req.body;
     const story = await Story.findByPk(id);
     if (!story) return res.status(404).json({ success: false, message: 'Story not found' });
     const role = req.user.role;
@@ -283,7 +293,6 @@ exports.updateStory = async (req, res) => {
         contentText,
         audioRef,
         pdf,
-        taskPdf,
         wordCount: wc,
         level: normalizedLevel,
         tags: tagNames
@@ -339,10 +348,19 @@ exports.updateStory = async (req, res) => {
       contentText: contentText ?? story.contentText,
       audioRef: audioRef ?? story.audioRef,
       pdf: pdf ?? story.pdf,
-      taskPdf: (typeof taskPdf !== 'undefined' ? taskPdf : story.taskPdf),
       wordCount: wc,
       level: normalizedLevel
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'story', resourceId: story.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
     
     if (tags) {
       // Reset tags then attach

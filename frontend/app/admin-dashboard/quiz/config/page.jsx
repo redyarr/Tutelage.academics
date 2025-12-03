@@ -102,31 +102,31 @@ export default function QuizConfigPage() {
   return (
     <div className="p-6 max-w-4xl">
       {/* Header with back button and refresh */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex items-start sm:items-center justify-between gap-4 mb-2">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Quiz Configuration</h1>
             <p className="text-muted-foreground mt-1">Manage global quiz settings</p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push('/admin-dashboard/quiz')}
-            className="cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
-          </Button>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="cursor-pointer"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-        </Button>
+          <div className='flex flex-col sm:flex-row gap-2'>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push('/admin-dashboard/quiz')}
+                className="cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
       </div>
 
       <div className="bg-card border border-border rounded-lg p-6 shadow-sm">

@@ -33,6 +33,7 @@ const pdfUpload = (req, res, next) => {
   const fields = upload.fields([
     { name: 'pdfFile', maxCount: 1 },
     { name: 'taskPdfFile', maxCount: 1 },
+    { name: 'taskPdfFiles', maxCount: 10 },
   ]);
 
   fields(req, res, async (err) => {
@@ -44,15 +45,26 @@ const pdfUpload = (req, res, next) => {
       // If direct URLs are provided, leave them as-is. Otherwise, upload any files.
       const pdfFile = req.files?.pdfFile?.[0];
       const taskPdfFile = req.files?.taskPdfFile?.[0];
+      const taskPdfFiles = req.files?.taskPdfFiles || [];
 
       if (pdfFile) {
         const url = await uploadPdfBuffer(pdfFile.buffer, pdfFile.originalname);
         req.body.pdf = url;
       }
 
+      const collected = [];
       if (taskPdfFile) {
         const url = await uploadPdfBuffer(taskPdfFile.buffer, taskPdfFile.originalname);
-        req.body.taskPdf = url;
+        collected.push({ filePath: url, fileName: taskPdfFile.originalname, fileSize: taskPdfFile.size, uploadDate: new Date().toISOString() });
+      }
+      if (Array.isArray(taskPdfFiles) && taskPdfFiles.length) {
+        for (const f of taskPdfFiles) {
+          const url = await uploadPdfBuffer(f.buffer, f.originalname);
+          collected.push({ filePath: url, fileName: f.originalname, fileSize: f.size, uploadDate: new Date().toISOString() });
+        }
+      }
+      if (collected.length) {
+        req.body.taskPdfs = collected;
       }
 
       next();

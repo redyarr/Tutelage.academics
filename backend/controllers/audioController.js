@@ -77,7 +77,7 @@ async function includeTagsFor(resourceId) {
  */
 const createAudio = async (req, res) => {
   try {
-    const { title, description, discription, transcript, audioRef, pdf, pdfRef, taskPdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, description, discription, transcript, audioRef, pdf, pdfRef, level, imageUrl, imageurl, tags } = req.body;
     const createdBy = req.user.id; // From auth middleware
     const role = req.user.role;
 
@@ -100,7 +100,7 @@ const createAudio = async (req, res) => {
         transcript,
         audioRef,
         pdf: (pdf ?? pdfRef ?? null),
-        taskPdf: taskPdf ?? null,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         imageUrl: (imageUrl ?? imageurl ?? null),
         level: normalizedLevels,
         tags: Array.isArray(tags)
@@ -140,11 +140,20 @@ const createAudio = async (req, res) => {
       transcript,
       audioRef,
       pdf: (pdf ?? pdfRef ?? null),
-      taskPdf: taskPdf ?? null,
       imageUrl: (imageUrl ?? imageurl ?? null),
       level: normalizedLevels,
       createdBy
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'audio', resourceId: audio.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     // Fetch the created audio with author information
     const audioWithAuthor = await Audio.findByPk(audio.id, {
@@ -413,7 +422,7 @@ const getAudioById = async (req, res) => {
 const updateAudio = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, discription, transcript, audioRef, pdf, pdfRef, taskPdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, description, discription, transcript, audioRef, pdf, pdfRef, level, imageUrl, imageurl, tags } = req.body;
 
     const audio = await Audio.findByPk(id);
 
@@ -433,7 +442,6 @@ const updateAudio = async (req, res) => {
         transcript: transcript ?? audio.transcript,
         audioRef: audioRef ?? audio.audioRef,
         pdf: (pdf ?? pdfRef ?? audio.pdf),
-        taskPdf: taskPdf ?? audio.taskPdf,
         imageUrl: (imageUrl ?? imageurl ?? audio.imageUrl),
         level: normalizedLevel ?? audio.level,
         tags: (tags !== undefined)
@@ -486,10 +494,19 @@ const updateAudio = async (req, res) => {
       transcript: transcript ?? audio.transcript,
       audioRef: audioRef ?? audio.audioRef,
       pdf: (pdf ?? pdfRef ?? audio.pdf),
-      taskPdf: taskPdf ?? audio.taskPdf,
       imageUrl: (imageUrl ?? imageurl ?? audio.imageUrl),
       level: normalizedLevel ?? audio.level
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'audio', resourceId: audio.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     if (tags !== undefined) {
       const tagNames = Array.isArray(tags) ? tags : String(tags).split(',').map(t => t.trim()).filter(Boolean);

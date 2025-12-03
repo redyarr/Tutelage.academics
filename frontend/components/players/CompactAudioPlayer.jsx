@@ -140,7 +140,7 @@ export default function CompactAudioPlayer({
         </div>
 
         {/* Volume */}
-        <div className="flex items-center gap-1 w-32">
+        <div className="hidden md:flex items-center gap-1 w-32">
           {volume > 0 ? <Volume2 className="h-4 w-4 text-muted-foreground" /> : <VolumeX className="h-4 w-4 text-muted-foreground" />}
           <input
             type="range"

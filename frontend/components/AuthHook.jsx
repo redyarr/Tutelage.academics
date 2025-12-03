@@ -11,7 +11,7 @@ export function useAuth() {
       try {
         // Include refresh token via header if available, with cookies as fallback
         let refreshToken = null
-        try { refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null } catch {}
+        refreshToken = localStorage.getItem('refreshToken')
 
         const res = await fetch(`${BASE_URL}/api/auth/refresh-token`, {
           method: 'POST',
@@ -19,6 +19,7 @@ export function useAuth() {
             'Content-Type': 'application/json',
             ...(refreshToken ? { 'X-Refresh-Token': refreshToken } : {})
           },
+          body: JSON.stringify({refreshToken}),
           credentials: 'include',
         });
         try {

@@ -149,8 +149,11 @@ export default function Navbar (){
               <ThemeToggle />
             </div>
             {/* Mobile search icon */}
-            <div className="lg:hidden flex items-center gap-2">
+            <div className="md:hidden flex items-center gap-2">
               <MobileSearchOverlay />
+              <LanguageWrapper >
+                <Language />
+              </LanguageWrapper>
               <ThemeToggle />
             </div>
             {/* Changing Websites */}
@@ -261,18 +264,20 @@ export default function Navbar (){
             style={{ maxHeight: 'calc(88dvh - 4rem)' }}
           >
             <div className="px-2 pt-2 pb-3 space-y-1">
-              {navItems.map((item, index) => (
-                <div key={item.name}>
+              {navItems.map((item, index) => {
+                  const isActive = pathname === item.href.trim()
+               return (
+                <div key={index}>
                   {item.dropdown ? (
                     // Render parent as toggle when it has dropdown on mobile
                     <>
                       <button
                         type="button"
-                        onClick={() => toggleMobileDropdown(item.name)}
+                        
                         className={`w-full flex items-center justify-between px-3 py-2 text-base font-medium transition-colors duration-200 ${mobileOpenDropdowns[item.name] ? 'text-primary font-bold' : 'text-foreground hover:text-primary'}`}
                       >
-                        <span>{item.name}</span>
-                        <ChevronDown className={`w-5 h-5 transform transition-transform ${mobileOpenDropdowns[item.name] ? 'rotate-180' : ''}`} />
+                        <Link className={`${isActive ? 'text-primary font-bold' : 'text-foreground hover:text-primary'}`} href={item.href} onClick={() => setMobileMenuOpen(false)}>{item.name}</Link>
+                        <ChevronDown size={20} onClick={() => toggleMobileDropdown(item.name)} className={`px-4 size-auto cursor-pointer transform transition-transform ${mobileOpenDropdowns[item.name] ? 'rotate-180' : ''}`} />
                       </button>
                       <AnimatePresence>
                         {mobileOpenDropdowns[item.name] && (
@@ -307,7 +312,8 @@ export default function Navbar (){
                     </Link>
                   )}
                 </div>
-              ))}
+               )
+              })}
             </div>
           </motion.div>
         )}

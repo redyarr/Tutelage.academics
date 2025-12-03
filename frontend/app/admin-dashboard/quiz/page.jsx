@@ -101,15 +101,6 @@ export default function QuizDashboardPage() {
           <h1 className="text-3xl font-bold text-foreground">Quiz Management</h1>
           <p className="text-muted-foreground mt-1">Configure and manage all aspects of the placement quiz</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => router.push('/admin-dashboard')}
-          className="cursor-pointer"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Dashboard
-        </Button>
       </div>
 
       {/* Cards grid */}

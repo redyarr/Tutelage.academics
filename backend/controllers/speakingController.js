@@ -69,7 +69,7 @@ async function includeTagsFor(resourceId) {
  */
 const createSpeaking = async (req, res) => {
   try {
-    const { title, description, discription, content, transcript, videoRef, pdf, taskPdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, description, discription, content, transcript, videoRef, pdf, level, imageUrl, imageurl, tags } = req.body;
     const createdBy = req.user.id; // From auth middleware
     const role = req.user.role;
 
@@ -91,7 +91,7 @@ const createSpeaking = async (req, res) => {
         transcript,
         videoRef,
         pdf,
-        taskPdf,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         imageUrl: (imageUrl ?? imageurl ?? null),
         level: normalizedLevels,
         tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : [])
@@ -130,12 +130,21 @@ const createSpeaking = async (req, res) => {
       transcript,
       videoRef,
       pdf,
-      taskPdf,
       imageUrl: (imageUrl ?? imageurl ?? null),
       level: normalizedLevels,
       tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined),
       createdBy
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'speaking', resourceId: speaking.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     // Sync tags to join table while preserving array column for compatibility
     const tagNames = Array.isArray(tags)
@@ -365,7 +374,7 @@ const getSpeakingById = async (req, res) => {
 const updateSpeaking = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, discription, content, transcript, videoRef, pdf, taskPdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, description, discription, content, transcript, videoRef, pdf, level, imageUrl, imageurl, tags } = req.body;
 
     const speaking = await Speaking.findByPk(id);
     if (!speaking) {
@@ -381,7 +390,6 @@ const updateSpeaking = async (req, res) => {
         transcript,
         videoRef,
         pdf,
-        taskPdf,
         imageUrl: (imageUrl ?? imageurl),
         level: normalizedLevelUpdate,
         tags: Array.isArray(tags)
@@ -430,13 +438,22 @@ const updateSpeaking = async (req, res) => {
       transcript: transcript ?? speaking.transcript,
       videoRef: videoRef ?? speaking.videoRef,
       pdf: pdf ?? speaking.pdf,
-      taskPdf: taskPdf ?? speaking.taskPdf,
       imageUrl: (imageUrl ?? imageurl ?? speaking.imageUrl),
       level: normalizedLevelUpdate ?? speaking.level,
       tags: Array.isArray(tags)
         ? tags
         : (tags !== undefined ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : speaking.tags)
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'speaking', resourceId: speaking.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     // Sync join-table tags
     const tagNames = Array.isArray(tags)

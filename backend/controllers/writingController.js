@@ -69,7 +69,7 @@ async function includeTagsFor(resourceId) {
  */
 const createWriting = async (req, res) => {
   try {
-    const { title, content, description, discription, pdf, taskPdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags } = req.body;
     const createdBy = req.user.id; // From auth middleware
     const role = req.user.role;
 
@@ -88,7 +88,7 @@ const createWriting = async (req, res) => {
         content,
         description: (description ?? discription ?? null),
         pdf,
-        taskPdf,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         imageUrl: (imageUrl ?? imageurl ?? null),
         level: normalizedLevels,
         tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : [])
@@ -125,12 +125,21 @@ const createWriting = async (req, res) => {
       content,
       description: (description ?? discription ?? null),
       pdf,
-      taskPdf,
       imageUrl: (imageUrl ?? imageurl ?? null),
       level: normalizedLevels,
       tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined),
       createdBy
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'writing', resourceId: writing.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     // Sync tags to join table while preserving array column for compatibility
     const tagNames = Array.isArray(tags)
@@ -300,7 +309,7 @@ const getWritingById = async (req, res) => {
 const updateWriting = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, description, discription, pdf, taskPdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags } = req.body;
     const writing = await Writing.findByPk(id);
     if (!writing) {
       return res.status(404).json({ success: false, message: 'Writing content not found' });
@@ -316,7 +325,6 @@ const updateWriting = async (req, res) => {
         content: content ?? writing.content,
         description: (description ?? discription ?? writing.description),
         pdf: pdf ?? writing.pdf,
-        taskPdf: taskPdf ?? writing.taskPdf,
         imageUrl: (imageUrl ?? imageurl ?? writing.imageUrl),
         level: normalizedLevelUpdate ?? writing.level,
         tags: Array.isArray(tags)
@@ -366,13 +374,22 @@ const updateWriting = async (req, res) => {
       content: content ?? writing.content,
       description: (description ?? discription ?? writing.description),
       pdf: pdf ?? writing.pdf,
-      taskPdf: taskPdf ?? writing.taskPdf,
       imageUrl: (imageUrl ?? imageurl ?? writing.imageUrl),
       level: normalizedLevelUpdate ?? writing.level,
       tags: Array.isArray(tags)
         ? tags
         : (tags !== undefined ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : writing.tags)
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'writing', resourceId: writing.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     // Sync join-table tags
     const tagNamesUpdate = Array.isArray(tags)
