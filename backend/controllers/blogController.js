@@ -5,10 +5,11 @@
 // support for infinite scrolling functionality.
 // ============================================================================
 
-const { Blog, User, Tag, ResourceTag, ApprovalRequest } = require('../models');
+const { Blog, User, Tag, ResourceTag, ApprovalRequest, TaskPdf } = require('../models');
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
 const { getTasks } = require('../scripts/fetchTasks');
+const taskPdf = require('../models/taskPdf');
 
 // Convert incoming level(s) to CEFR labels as an array
 function normalizeLevels(input) {
@@ -71,6 +72,12 @@ async function getTagFilterIds(tagQuery) {
  */
 const createBlog = async (req, res) => {
   try {
+    console.log('🎯 createBlog called');
+    console.log('👤 User:', { id: req.user.id, role: req.user.role });
+    console.log('📥 req.body keys:', Object.keys(req.body));
+    console.log('📥 req.body.taskPdfs:', req.body.taskPdfs);
+    console.log('📥 req.files:', req.files);
+    
     const { title, content, imageRef, imageUrl, imageurl, category, tag, tags, description, discription, desccription, level } = req.body;
     const createdBy = req.user.id;
     const role = req.user.role;
@@ -88,6 +95,10 @@ const createBlog = async (req, res) => {
 
     // Get PDF URLs from middleware (pdfUpload already processed them into req.body)
     const { pdf } = req.body;
+    
+    // Handle multiple taskPdfs - already processed by middleware
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    console.log('📎 taskPdfsArray from middleware:', taskPdfsArray.length, 'files');
 
     // MAIN_MANAGER users queue creation for approval
     if (role === 'MAIN_MANAGER') {
@@ -99,7 +110,7 @@ const createBlog = async (req, res) => {
         description: description ?? discription ?? desccription ?? null,
         level: normalizedLevels,
         pdf: pdf || null,
-        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
+        taskPdfs: taskPdfsArray,
         tags: Array.isArray(tags)
           ? tags
           : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : [])
@@ -142,14 +153,26 @@ const createBlog = async (req, res) => {
       createdBy
     });
 
-    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
-      const rows = req.body.taskPdfs
+    // Handle multiple task PDFs
+    if (taskPdfsArray.length) {
+      console.log('📎 Processing', taskPdfsArray.length, 'task PDFs for blog creation...');
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'blog', resourceId: blog.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'blog', 
+          resourceId: blog.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
+      console.log('📎 Rows to insert:', rows.length);
       if (rows.length) {
-        const { TaskPdf } = require('../models');
-        await TaskPdf.bulkCreate(rows);
+        const created = await TaskPdf.bulkCreate(rows);
+        console.log('✅', created.length, 'task PDFs created successfully');
       }
+    } else {
+      console.log('ℹ️ No task PDFs to create');
     }
 
     // Handle tags
@@ -175,7 +198,7 @@ const createBlog = async (req, res) => {
       data: { ...blogWithAuthor.toJSON(), tags: tagList }
     });
   } catch (error) {
-    console.error('Error creating blog:', error);
+    console.error('❌ Error creating blog:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',
@@ -244,7 +267,9 @@ const getAllBlogs = async (req, res) => {
         model: User,
         as: 'author',
         attributes: ['id', 'name', 'email']
-      }],
+      },
+      { model: TaskPdf, as: 'taskPdfs' }
+    ],
       limit: fetchLimit,
       order: [
         [sortBy, sortOrder.toUpperCase()],
@@ -295,7 +320,10 @@ const getBlogById = async (req, res) => {
         model: User,
         as: 'author',
         attributes: ['id', 'name', 'email']
-      }]
+      },
+    {
+      model: TaskPdf, as: 'taskPdfs'
+    }]
     });
 
     if (!blog) {
@@ -329,8 +357,15 @@ const getBlogById = async (req, res) => {
  */
 const updateBlog = async (req, res) => {
   try {
+    console.log('🎯 updateBlog called for blog ID:', req.params.id);
+    console.log('👤 User:', { id: req.user.id, role: req.user.role });
+    console.log('📥 req.body keys:', Object.keys(req.body));
+    console.log('📥 req.body.taskPdfs:', req.body.taskPdfs);
+    console.log('📥 req.body.deletedTaskPdfIds:', req.body.deletedTaskPdfIds);
+    console.log('📥 req.files:', req.files);
+    
     const { id } = req.params;
-    const { title, content, imageRef, imageUrl, imageurl, category, tag, tags, description, discription, desccription, level } = req.body;
+    const { title, content, imageRef, imageUrl, imageurl, category, tag, tags, description, discription, desccription, level, deletedTaskPdfIds } = req.body;
 
     const blog = await Blog.findByPk(id);
 
@@ -356,7 +391,7 @@ const updateBlog = async (req, res) => {
         level: normalizedLevelUpdate,
         pdf: pdfUrl,
         taskPdfs: taskPdfsPayload,
-        // capture tags for later application by admin approval
+        deletedTaskPdfIds: deletedTaskPdfIds ? JSON.parse(deletedTaskPdfIds) : [],
         tags: (tags !== undefined)
           ? (Array.isArray(tags) ? tags : String(tags).split(',').map(t => t.trim()).filter(Boolean))
           : undefined
@@ -391,6 +426,7 @@ const updateBlog = async (req, res) => {
         approvalRequestId: approval.id
       });
     }
+    
     if (req.user.role !== 'ADMIN') {
       return res.status(403).json({
         success: false,
@@ -403,9 +439,35 @@ const updateBlog = async (req, res) => {
       ? normalizeLevels(level)
       : blog.level;
 
-    // Get PDF URLs from middleware (pdfUpload already processed them into req.body)
+    // Get PDF URLs from middleware
     const pdfUrl = req.body.pdf || blog.pdf;
-    const taskPdfsPayload = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    console.log('📎 taskPdfsArray from middleware:', taskPdfsArray.length, 'files');
+
+    // Handle deletion of existing task PDFs
+    if (deletedTaskPdfIds) {
+      console.log('🗑️ Processing deletedTaskPdfIds...');
+      try {
+        const idsToDelete = JSON.parse(deletedTaskPdfIds);
+        console.log('🗑️ Parsed IDs to delete:', idsToDelete);
+        if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
+          const deleteResult = await TaskPdf.destroy({
+            where: {
+              id: { [Op.in]: idsToDelete },
+              resourceType: 'blog',
+              resourceId: blog.id
+            }
+          });
+          console.log(`✅ Deleted ${deleteResult} task PDFs (requested: ${idsToDelete.length})`);
+        } else {
+          console.log('⚠️ No valid IDs to delete');
+        }
+      } catch (parseErr) {
+        console.error('❌ Error parsing deletedTaskPdfIds:', parseErr);
+      }
+    } else {
+      console.log('ℹ️ No deletedTaskPdfIds provided');
+    }
 
     await blog.update({
       title: title || blog.title,
@@ -417,14 +479,28 @@ const updateBlog = async (req, res) => {
       pdf: pdfUrl
     });
 
-    if (taskPdfsPayload.length) {
-      const rows = taskPdfsPayload
+    // Handle multiple task PDFs - append to existing ones
+    if (taskPdfsArray.length) {
+      console.log('📎 Processing', taskPdfsArray.length, 'new task PDFs...');
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'blog', resourceId: blog.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'blog', 
+          resourceId: blog.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
+      console.log('📎 Filtered rows:', rows.length);
       if (rows.length) {
-        const { TaskPdf } = require('../models');
-        await TaskPdf.bulkCreate(rows);
+        const createResult = await TaskPdf.bulkCreate(rows);
+        console.log(`✅ Added ${createResult.length} new task PDFs`);
+      } else {
+        console.log('⚠️ No valid rows to insert');
       }
+    } else {
+      console.log('ℹ️ No new task PDFs to add');
     }
 
     // Update tags
@@ -434,13 +510,14 @@ const updateBlog = async (req, res) => {
       if (tagNames.length) await attachTags(blog.id, tagNames);
     }
 
-    // Fetch updated blog with author information
+    // Fetch updated blog with author information and task PDFs
     const updatedBlog = await Blog.findByPk(id, {
       include: [{
         model: User,
         as: 'author',
         attributes: ['id', 'name', 'email']
-      }]
+      },
+      { model: TaskPdf, as: 'taskPdfs' }]
     });
 
     const tagList = await includeTagsFor(blog.id);
@@ -451,7 +528,7 @@ const updateBlog = async (req, res) => {
       data: { ...updatedBlog.toJSON(), tags: tagList }
     });
   } catch (error) {
-    console.error('Error updating blog:', error);
+    console.error('❌ Error updating blog:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error',

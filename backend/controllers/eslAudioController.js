@@ -3,7 +3,7 @@
 // ============================================================================
 // CRUD, search, filter, sort, tag assignment, transcript search, analytics.
 
-const { EslAudio, Tag, ResourceTag, ResourceAnalytics, ApprovalRequest } = require('../models');
+const { EslAudio, Tag, ResourceTag, ResourceAnalytics, ApprovalRequest, TaskPdf } = require('../models');
 const { Op } = require('sequelize');
 const { sendApprovalRequestNotification } = require('../config/email');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -122,22 +122,30 @@ exports.createEslAudio = async (req, res) => {
       createdBy 
     });
 
-    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
-      const rows = req.body.taskPdfs
+    // Handle multiple task PDFs
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    if (taskPdfsArray.length) {
+      console.log('📎 Processing', taskPdfsArray.length, 'task PDFs for ESL audio creation...');
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'esl_audio', resourceId: audio.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'esl_audio', 
+          resourceId: audio.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
       if (rows.length) {
-        const { TaskPdf } = require('../models');
-        await TaskPdf.bulkCreate(rows);
+        const created = await TaskPdf.bulkCreate(rows);
+        console.log('✅', created.length, 'task PDFs created successfully');
       }
     }
     
-    // Attach tags to join table
     if (tagNames.length > 0) {
       await attachTags(audio.id, tagNames);
     }
     
-    // Fetch tags from join table for response
     const tagList = await includeTagsFor(audio.id);
     res.status(201).json({ success: true,message: "Esl Audio Created Successfully", data: { ...audio.toJSON(), tags: tagList } });
   } catch (err) {
@@ -227,6 +235,7 @@ exports.getAllEslAudios = async (req, res) => {
     
     let rows = await EslAudio.findAll({
       where,
+      include: [{ model: TaskPdf, as: 'taskPdfs' }], // Added TaskPdf include
       order,
       limit: fetchLimit,
       distinct: true
@@ -264,11 +273,13 @@ exports.getAllEslAudios = async (req, res) => {
 exports.getEslAudioById = async (req, res) => {
   try {
     const { id } = req.params;
-    const audio = await EslAudio.findByPk(id);
+    const audio = await EslAudio.findByPk(id, {
+      include: [{ model: TaskPdf, as: 'taskPdfs' }] // Added TaskPdf include
+    });
     if (!audio) return res.status(404).json({ success: false, message: 'Audio not found' });
     const tasks = await getTasks(audio.id);    
     const tags = await includeTagsFor(audio.id);
-    const metrics = await bumpAnalytics(audio.id, 'views', 1); // count a detail view
+    const metrics = await bumpAnalytics(audio.id, 'views', 1);
     res.status(200).json({ success: true, data: { ...audio.toJSON(), tags, metrics, tasks } });
   } catch (err) {
     console.error('Error fetching ESL audio:', err);
@@ -279,7 +290,7 @@ exports.getEslAudioById = async (req, res) => {
 exports.updateEslAudio = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, imageUrl, description, transcript, audioRef, pdf, level, tags } = req.body;
+    const { title, imageUrl, description, transcript, audioRef, pdf, level, tags, deletedTaskPdfIds } = req.body;
     const audio = await EslAudio.findByPk(id);
     if (!audio) return res.status(404).json({ success: false, message: 'Audio not found' });
     const role = req.user?.role;
@@ -329,6 +340,25 @@ exports.updateEslAudio = async (req, res) => {
       });
     }
     
+    // Handle deletion of existing task PDFs
+    if (deletedTaskPdfIds) {
+      try {
+        const idsToDelete = JSON.parse(deletedTaskPdfIds);
+        if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
+          await TaskPdf.destroy({
+            where: {
+              id: { [Op.in]: idsToDelete },
+              resourceType: 'esl_audio',
+              resourceId: audio.id
+            }
+          });
+          console.log(`✅ Deleted ${idsToDelete.length} task PDFs`);
+        }
+      } catch (parseErr) {
+        console.error('❌ Error parsing deletedTaskPdfIds:', parseErr);
+      }
+    }
+    
     await audio.update({ 
       title, 
       imageUrl, 
@@ -339,27 +369,33 @@ exports.updateEslAudio = async (req, res) => {
       level: normalizeLevels(level) 
     });
 
-    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
-      const rows = req.body.taskPdfs
+    // Handle multiple task PDFs
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    if (taskPdfsArray.length) {
+      console.log('📎 Processing', taskPdfsArray.length, 'new task PDFs...');
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'esl_audio', resourceId: audio.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'esl_audio', 
+          resourceId: audio.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
       if (rows.length) {
-        const { TaskPdf } = require('../models');
-        await TaskPdf.bulkCreate(rows);
+        const created = await TaskPdf.bulkCreate(rows);
+        console.log(`✅ Added ${created.length} new task PDFs`);
       }
     }
     
-    // Update tags if provided
     if (tagNames !== null) {
-      // Clear existing tags first
       await ResourceTag.destroy({ where: { resourceType: 'audio', resourceId: id } });
-      // Add new tags
       if (tagNames.length > 0) {
         await attachTags(audio.id, tagNames);
       }
     }
     
-    // Fetch updated tags from join table
     const tagList = await includeTagsFor(audio.id);
     res.status(200).json({ success: true,message : 'Esl Audio Updated Successfully', data: { ...audio.toJSON(), tags: tagList } });
   } catch (err) {

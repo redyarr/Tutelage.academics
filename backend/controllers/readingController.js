@@ -5,7 +5,7 @@
 // Mirrors Writing/Speaking patterns and syncs tags via ResourceTag.
 // ============================================================================
 
-const { Reading, User, Tag, ResourceTag, ApprovalRequest } = require('../models');
+const { Reading, User, Tag, ResourceTag, ApprovalRequest, TaskPdf } = require('../models');
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -130,12 +130,20 @@ const createReading = async (req, res) => {
       createdBy
     });
 
-    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
-      const rows = req.body.taskPdfs
+    // Handle multiple task PDFs
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    if (taskPdfsArray.length) {
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'reading', resourceId: reading.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'reading', 
+          resourceId: reading.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
       if (rows.length) {
-        const { TaskPdf } = require('../models');
         await TaskPdf.bulkCreate(rows);
       }
     }
@@ -195,7 +203,10 @@ const getAllReadings = async (req, res) => {
     const fetchLimit = parseInt(limit) + 1;
     const readings = await Reading.findAll({
       where: whereClause,
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }],
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ],
       limit: fetchLimit,
       order: [
         [sortBy, sortOrder.toUpperCase()],
@@ -256,7 +267,10 @@ const getPaginatedReadings = async (req, res) => {
 
     const { count, rows } = await Reading.findAndCountAll({
       where: whereClause,
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }],
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ],
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [[sortBy, sortOrder.toUpperCase()]],
@@ -292,7 +306,10 @@ const getReadingById = async (req, res) => {
   try {
     const { id } = req.params;
     const reading = await Reading.findByPk(id, {
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }]
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ]
     });
     if (!reading) {
       return res.status(404).json({ success: false, message: 'Reading content not found' });
@@ -313,7 +330,7 @@ const getReadingById = async (req, res) => {
 const updateReading = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags, deletedTaskPdfIds } = req.body;
 
     const reading = await Reading.findByPk(id);
     if (!reading) {
@@ -368,6 +385,24 @@ const updateReading = async (req, res) => {
 
     const normalizedLevelUpdate = level !== undefined ? normalizeLevels(level) : reading.level;
 
+    // Handle deletion of existing task PDFs
+    if (deletedTaskPdfIds) {
+      try {
+        const idsToDelete = JSON.parse(deletedTaskPdfIds);
+        if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
+          await TaskPdf.destroy({
+            where: {
+              id: { [Op.in]: idsToDelete },
+              resourceType: 'reading',
+              resourceId: reading.id
+            }
+          });
+        }
+      } catch (parseErr) {
+        console.error('Error parsing deletedTaskPdfIds:', parseErr);
+      }
+    }
+
     await reading.update({
       title: title ?? reading.title,
       content: content ?? reading.content,
@@ -380,18 +415,23 @@ const updateReading = async (req, res) => {
         : (tags !== undefined ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : reading.tags)
     });
 
-    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
-      const rows = req.body.taskPdfs
+    // Handle multiple task PDFs
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    if (taskPdfsArray.length) {
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'reading', resourceId: reading.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'reading', 
+          resourceId: reading.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
       if (rows.length) {
-        const { TaskPdf } = require('../models');
         await TaskPdf.bulkCreate(rows);
       }
     }
-
-    const tagNamesUpdate = Array.isArray(tags) ? tags.map(t => String(t).trim()).filter(Boolean) : [];
-    if (tagNamesUpdate.length) await attachTags(reading.id, tagNamesUpdate);
 
     const updatedReading = await Reading.findByPk(id, {
       include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }]

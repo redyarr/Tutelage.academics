@@ -3,7 +3,7 @@
 // ============================================================================
 // Handles CRUD operations, search/filter/sort for stories.
 
-const { Story, User, ResourceTag, Tag, ResourceAnalytics, Sequelize, ApprovalRequest } = require('../models');
+const { Story, User, ResourceTag, Tag, ResourceAnalytics, Sequelize, ApprovalRequest, TaskPdf } = require('../models');
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -134,13 +134,23 @@ exports.createStory = async (req, res) => {
       title, imageUrl, description, contentText, audioRef, pdf, wordCount: wc, level: normalizedLevel, createdBy
     });
 
-    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
-      const rows = req.body.taskPdfs
+    // Handle multiple task PDFs
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    if (taskPdfsArray.length) {
+      console.log('📎 Processing', taskPdfsArray.length, 'task PDFs for story creation...');
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'story', resourceId: story.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'story', 
+          resourceId: story.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
       if (rows.length) {
-        const { TaskPdf } = require('../models');
-        await TaskPdf.bulkCreate(rows);
+        const created = await TaskPdf.bulkCreate(rows);
+        console.log('✅', created.length, 'task PDFs created successfully');
       }
     }
 
@@ -226,7 +236,10 @@ exports.getAllStories = async (req, res) => {
     const fetchLimit = parseInt(limit) + 1;
     let stories = await Story.findAll({
       where,
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }],
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' } // Added TaskPdf include
+      ],
       limit: fetchLimit,
       order: [[sortBy, (sortOrder || 'DESC').toUpperCase()], ['id', (sortOrder || 'DESC').toUpperCase()]],
       distinct: true
@@ -252,7 +265,12 @@ exports.getAllStories = async (req, res) => {
 exports.getStoryById = async (req, res) => {
   try {
     const { id } = req.params;
-    const story = await Story.findByPk(id, { include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }] });
+    const story = await Story.findByPk(id, { 
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' } // Added TaskPdf include
+      ] 
+    });
     if (!story) return res.status(404).json({ success: false, message: 'Story not found' });
     const analytics = await ensureAnalytics(story.id);
     await analytics.update({ views: analytics.views + 1 });
@@ -272,7 +290,7 @@ exports.getStoryById = async (req, res) => {
 exports.updateStory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, imageUrl, description, contentText, audioRef, pdf, wordCount, level, tags } = req.body;
+    const { title, imageUrl, description, contentText, audioRef, pdf, wordCount, level, tags, deletedTaskPdfIds } = req.body;
     const story = await Story.findByPk(id);
     if (!story) return res.status(404).json({ success: false, message: 'Story not found' });
     const role = req.user.role;
@@ -345,6 +363,25 @@ exports.updateStory = async (req, res) => {
       wc = story.wordCount;
     }
     
+    // Handle deletion of existing task PDFs
+    if (deletedTaskPdfIds) {
+      try {
+        const idsToDelete = JSON.parse(deletedTaskPdfIds);
+        if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
+          await TaskPdf.destroy({
+            where: {
+              id: { [Op.in]: idsToDelete },
+              resourceType: 'story',
+              resourceId: story.id
+            }
+          });
+          console.log(`✅ Deleted ${idsToDelete.length} task PDFs`);
+        }
+      } catch (parseErr) {
+        console.error('❌ Error parsing deletedTaskPdfIds:', parseErr);
+      }
+    }
+
     await story.update({
       title: title ?? story.title,
       imageUrl: imageUrl ?? story.imageUrl,
@@ -356,13 +393,23 @@ exports.updateStory = async (req, res) => {
       level: normalizedLevel
     });
 
-    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
-      const rows = req.body.taskPdfs
+    // Handle multiple task PDFs
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    if (taskPdfsArray.length) {
+      console.log('📎 Processing', taskPdfsArray.length, 'new task PDFs...');
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'story', resourceId: story.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'story', 
+          resourceId: story.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
       if (rows.length) {
-        const { TaskPdf } = require('../models');
-        await TaskPdf.bulkCreate(rows);
+        const created = await TaskPdf.bulkCreate(rows);
+        console.log(`✅ Added ${created.length} new task PDFs`);
       }
     }
     

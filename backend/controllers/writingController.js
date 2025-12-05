@@ -4,7 +4,7 @@
 // Handles CRUD operations for Writing content with pagination and filtering.
 // ============================================================================
 
-const { Writing, User, Tag, ResourceTag, ApprovalRequest } = require('../models');
+const { Writing, User, Tag, ResourceTag, ApprovalRequest, TaskPdf } = require('../models');
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -132,12 +132,20 @@ const createWriting = async (req, res) => {
       createdBy
     });
 
-    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
-      const rows = req.body.taskPdfs
+    // Handle multiple task PDFs
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    if (taskPdfsArray.length) {
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'writing', resourceId: writing.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'writing', 
+          resourceId: writing.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
       if (rows.length) {
-        const { TaskPdf } = require('../models');
         await TaskPdf.bulkCreate(rows);
       }
     }
@@ -197,7 +205,10 @@ const getAllWritings = async (req, res) => {
     const fetchLimit = parseInt(limit) + 1;
     const writings = await Writing.findAll({
       where: whereClause,
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }],
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ],
       limit: fetchLimit,
       order: [
         [sortBy, sortOrder.toUpperCase()],
@@ -255,7 +266,10 @@ const getPaginatedWritings = async (req, res) => {
 
     const { count, rows } = await Writing.findAndCountAll({
       where: whereClause,
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }],
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ],
       limit: parseInt(limit),
       offset: parseInt(offset),
       order: [[sortBy, sortOrder.toUpperCase()]],
@@ -291,7 +305,10 @@ const getWritingById = async (req, res) => {
   try {
     const { id } = req.params;
     const writing = await Writing.findByPk(id, {
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }]
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ]
     });
     if (!writing) {
       return res.status(404).json({ success: false, message: 'Writing content not found' });
@@ -312,7 +329,7 @@ const getWritingById = async (req, res) => {
 const updateWriting = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags, deletedTaskPdfIds } = req.body;
     const writing = await Writing.findByPk(id);
     if (!writing) {
       return res.status(404).json({ success: false, message: 'Writing content not found' });
@@ -372,6 +389,24 @@ const updateWriting = async (req, res) => {
       ? normalizeLevels(level)
       : writing.level;
 
+    // Handle deletion of existing task PDFs
+    if (deletedTaskPdfIds) {
+      try {
+        const idsToDelete = JSON.parse(deletedTaskPdfIds);
+        if (Array.isArray(idsToDelete) && idsToDelete.length > 0) {
+          await TaskPdf.destroy({
+            where: {
+              id: { [Op.in]: idsToDelete },
+              resourceType: 'writing',
+              resourceId: writing.id
+            }
+          });
+        }
+      } catch (parseErr) {
+        console.error('Error parsing deletedTaskPdfIds:', parseErr);
+      }
+    }
+
     await writing.update({
       title: title ?? writing.title,
       content: content ?? writing.content,
@@ -384,12 +419,20 @@ const updateWriting = async (req, res) => {
         : (tags !== undefined ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : writing.tags)
     });
 
-    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
-      const rows = req.body.taskPdfs
+    // Handle multiple task PDFs
+    const taskPdfsArray = Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [];
+    if (taskPdfsArray.length) {
+      const rows = taskPdfsArray
         .filter(p => p && p.filePath && p.fileName)
-        .map(p => ({ resourceType: 'writing', resourceId: writing.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+        .map(p => ({ 
+          resourceType: 'writing', 
+          resourceId: writing.id, 
+          filePath: p.filePath, 
+          fileName: p.fileName, 
+          fileSize: p.fileSize || null, 
+          uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() 
+        }));
       if (rows.length) {
-        const { TaskPdf } = require('../models');
         await TaskPdf.bulkCreate(rows);
       }
     }
