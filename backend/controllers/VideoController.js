@@ -115,7 +115,6 @@ const createVideo = async (req, res) => {
 
     // Handle PDF URLs provided by pdfUpload middleware (or fallback to multer paths)
     const pdf = (req.body?.pdf ?? null) || (req.files?.pdf?.[0]?.path ?? null);
-    const taskPdf = (req.body?.taskPdf ?? null) || (req.files?.taskPdf?.[0]?.path ?? null);
 
     // MAIN_MANAGER users queue creation for admin approval
     if (role === 'MAIN_MANAGER') {
@@ -124,7 +123,7 @@ const createVideo = async (req, res) => {
         videoRef,
         description: description ?? null,
         pdf,
-        taskPdf,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         level: normalizedLevels,
         tags: tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : []
       };
@@ -160,10 +159,19 @@ const createVideo = async (req, res) => {
       videoRef,
       description,
       pdf,
-      taskPdf,
       level: normalizedLevels,
       createdBy
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'video', resourceId: video.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     const videoWithAuthor = await Video.findByPk(video.id, {
       include: [{
@@ -450,16 +458,13 @@ const updateVideo = async (req, res) => {
       const pdf = (req.body?.pdf !== undefined)
         ? req.body.pdf
         : (req.files?.pdf?.[0]?.path ?? video.pdf);
-      const taskPdf = (req.body?.taskPdf !== undefined)
-        ? req.body.taskPdf
-        : (req.files?.taskPdf?.[0]?.path ?? video.taskPdf);
 
       const payload = {
         title: title ?? video.title,
         videoRef: videoRef ?? video.videoRef,
         description: description ?? video.description,
         pdf,
-        taskPdf,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : undefined,
         level: normalizedLevel ?? video.level,
         tags: (tags !== undefined)
           ? String(tags).split(',').map(t => t.trim()).filter(Boolean)
@@ -508,18 +513,24 @@ const updateVideo = async (req, res) => {
     const pdf = (req.body?.pdf !== undefined)
       ? req.body.pdf
       : (req.files?.pdf?.[0]?.path ?? video.pdf);
-    const taskPdf = (req.body?.taskPdf !== undefined)
-      ? req.body.taskPdf
-      : (req.files?.taskPdf?.[0]?.path ?? video.taskPdf);
 
     await video.update({
       title: title ?? video.title,
       videoRef: videoRef ?? video.videoRef,
       description: description ?? video.description,
       pdf,
-      taskPdf,
       level: normalizedLevel ?? video.level
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'video', resourceId: video.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     if (tags !== undefined) {
       const tagNames = String(tags).split(',').map(t => t.trim()).filter(Boolean);

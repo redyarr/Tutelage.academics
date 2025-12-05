@@ -33,7 +33,7 @@ const {
 /**
  * GET /api/admin/quiz/config
  * Fetch the current quiz configuration (totalQuestions, timeLimitMinutes)
- */
+*/
 router.get('/config', getQuizConfig);
 
 router.use(isAuthenticated, adminAuth);

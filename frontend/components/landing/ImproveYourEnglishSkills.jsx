@@ -1,7 +1,15 @@
+'use client'
+
 import Link from 'next/link'
 import { Volume2, MessageSquare, BookOpen, PenTool } from 'lucide-react'
+import { motion } from "framer-motion"
+import { useInView } from "framer-motion"
+import { useRef } from "react"
 
 const ImproveYourEnglishSkills = () => {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+
   const skills = [
     {
       icon: Volume2,
@@ -30,16 +38,26 @@ const ImproveYourEnglishSkills = () => {
   ]
 
   return (
-    <div className="pt-16 md:py-20 px-4">
+    <div className="pt-16 md:py-20 px-4" ref={ref}>
       <div className="max-w-7xl mx-auto">
         {/* Section Title */}
         <div className="text-center mb-16">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground mb-4">
+          <motion.h2
+            initial={{ opacity: 0 }}
+            animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: 0.6 }}
+            className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground mb-4"
+          >
             Improve Your English Skills
-          </h2>
-          <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto">
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto"
+          >
             Master all four essential English language skills with our comprehensive training programs
-          </p>
+          </motion.p>
         </div>
 
         {/* Skills Grid */}
@@ -47,7 +65,13 @@ const ImproveYourEnglishSkills = () => {
           {skills.map((skill, index) => {
             const IconComponent = skill.icon
             return (
-              <div key={skill.title} className="relative">
+              <motion.div
+                key={skill.title}
+                initial={{ opacity: 0 }}
+                animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 + (index * 0.1) }}
+                className="relative"
+              >
                 {/* Skill Item */}
                 <Link href={skill.href}>
                   <div className="group py-12 px-6 text-center transition-all duration-300 cursor-pointer">
@@ -102,7 +126,7 @@ const ImproveYourEnglishSkills = () => {
                 {index < 2 && (
                   <div className="hidden md:block lg:hidden absolute bottom-0 left-0 w-full h-px bg-border"></div>
                 )}
-              </div>
+              </motion.div>
             )
           })}
         </div>

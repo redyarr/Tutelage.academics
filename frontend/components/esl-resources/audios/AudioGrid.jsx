@@ -28,45 +28,20 @@ const AudioGrid = () => {
   const fetchAudios = async (page) => {
     setLoading(true)
     try {
-      const offset = (page - 1) * itemsPerPage
       const response = await fetch(
-        `${BASE_URL}/api/esl-audios?limit=${itemsPerPage}&offset=${offset}`,
+        `${BASE_URL}/api/esl-audios?page=${page}&limit=${itemsPerPage}`,
         { credentials: 'include' }
       )
       const data = await response.json()
 
       if (data.success) {
-        if (Array.isArray(data.data)) {
-          setAudios(data.data)
-          const hasNext = data.data.length === itemsPerPage
-          setHasNextPage(hasNext)
-          setHasPrevPage(page > 1)
-          setTotalPages(hasNext ? page + 10 : page)
-        } else {
-          // If API returns an object shape, try to find array
-          const list = data.data && (data.data.audios || data.data.items || data.data)
-          if (Array.isArray(list)) {
-            setAudios(list)
-            const hasNext = list.length === itemsPerPage
-            setHasNextPage(hasNext)
-            setHasPrevPage(page > 1)
-            setTotalPages(hasNext ? page + 10 : page)
-          } else {
-            setAudios([])
-            setHasNextPage(false)
-            setHasPrevPage(false)
-            setTotalPages(1)
-          }
-        }
-      } else {
-        setAudios([])
-        setHasNextPage(false)
-        setHasPrevPage(false)
-        setTotalPages(1)
+        setAudios(data.data)
+        setTotalPages(data.pagination.totalPages)
+        setHasNextPage(data.pagination.hasNextPage)
+        setHasPrevPage(data.pagination.hasPrevPage)
       }
     } catch (error) {
       console.error('Error fetching audios:', error)
-      setAudios([])
     } finally {
       setLoading(false)
     }

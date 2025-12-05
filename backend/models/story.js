@@ -51,12 +51,7 @@ module.exports = (sequelize, DataTypes) => {
         comment: 'Optional downloadable PDF resource for the story'
       },
 
-      // Task-specific downloadable PDF (e.g., worksheets or task sheets)
-      taskPdf: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: 'Optional URL for task-specific PDF associated with this story'
-      },
+      
 
       wordCount: {
         type: DataTypes.INTEGER,
@@ -95,6 +90,7 @@ module.exports = (sequelize, DataTypes) => {
       as: 'author',
       onDelete: 'CASCADE'
     });
+    Story.hasMany(models.TaskPdf, { foreignKey: 'resourceId', constraints: false, scope: { resourceType: 'story' }, as: 'taskPdfs' });
   };
 
   return Story;

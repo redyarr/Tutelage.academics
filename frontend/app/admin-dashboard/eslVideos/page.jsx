@@ -56,7 +56,6 @@ const EslVideos = () => {
 
   useEffect(() => {
     resetAndFetch()
-    // eslint-disable-next-line
   }, [searchTerm])
 
   const lastVideoRef = useInfiniteScroll({ loading, hasMore, onLoadMore: fetchVideos })

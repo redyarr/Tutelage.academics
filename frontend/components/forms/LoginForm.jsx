@@ -9,10 +9,8 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { useRouter } from "next/navigation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Eye, EyeOff } from "lucide-react"
-import BASE_URL from "@/app/config/url"
 import { useAuth } from "@/components/AuthContext"
 import Image from "next/image"
-console.log('BASE_URL:', BASE_URL);
 
 // Define form schema with Zod
 const formSchema = z.object({
@@ -42,8 +40,8 @@ const LoginForm = () => {
     setError(null)
     
     try {
-      // Send login request to backend API
-      const response = await fetch(`${BASE_URL}/api/auth/login`, {
+      // Send login request to Next.js API route which proxies to the backend
+      const response = await fetch('/api/signin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -53,8 +51,6 @@ const LoginForm = () => {
       })
 
       const data = await response.json()
-      
-
       if (!data.success) {
         // Handle login failure
         setError(data.message || 'Login failed. Please check your credentials.')
@@ -63,14 +59,7 @@ const LoginForm = () => {
 
       // Handle successful login
       console.log('Login successful:', data)
-      // Persist tokens for header-based auth in case cookies are blocked
-      if (data?.accessToken) {
-        try { localStorage.setItem('accessToken', data.accessToken) } catch {}
-      }
-      if (data?.refreshToken) {
-        try { localStorage.setItem('refreshToken', data.refreshToken) } catch {}
-      }
-      // Refresh auth context so user and role are available immediately
+     
       try { await refresh() } catch {}
       router.push('/admin-dashboard')
     }catch (error) {

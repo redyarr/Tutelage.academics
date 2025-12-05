@@ -60,11 +60,6 @@ const TutelageAiAbout = () => {
 
                 {/* Bullet Points */}
                 <ul className="space-y-3 mb-8">
-                  {/*
-                    "Intelligent assistance and smart recommendations",
-                    "Real-time guidance for independent study",
-                    "Valuable insights for improved efficiency"
-                  */}
                   {["Intelligent assistance and smart recommendations", "Real-time guidance for independent study", "Valuable insights for improved efficiency"].map((item, index) => (
                     <motion.li 
                       key={index}

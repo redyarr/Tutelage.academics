@@ -1,8 +1,16 @@
+'use client'
+
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Target, BookOpen, Globe } from 'lucide-react'
+import { motion } from "framer-motion"
+import { useInView } from "framer-motion"
+import { useRef } from "react"
 
 const Tests = () => {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, margin: "-100px" });
+
   const testCards = [
     {
       icon: Target,
@@ -28,16 +36,26 @@ const Tests = () => {
   ]
 
   return (
-    <div className="py-12 px-4">
+    <div className="py-12 px-4" ref={ref}>
       <div className="max-w-7xl mx-auto">
         {/* Section Title */}
         <div className="text-center mb-12">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground mb-4">
+          <motion.h2
+            initial={{ opacity: 0 }}
+            animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: 0.6 }}
+            className="text-3xl sm:text-4xl lg:text-5xl font-bold text-foreground mb-4"
+          >
             Test Your English Skills
-          </h2>
-          <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto">
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto"
+          >
             Discover your English proficiency level and track your progress with our comprehensive testing platform
-          </p>
+          </motion.p>
         </div>
 
         {/* Test Cards */}
@@ -45,8 +63,11 @@ const Tests = () => {
           {testCards.map((card, index) => {
             const IconComponent = card.icon
             return (
-              <div 
+              <motion.div
                 key={index}
+                initial={{ opacity: 0 }}
+                animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 + (index * 0.1) }}
                 className="bg-card border border-border rounded-3xl p-8 text-center shadow-lg transition-all duration-300 flex flex-col w-5/6 h-full min-h-[350px]"
               >
                 {/* Icon with Circle Background */}
@@ -74,10 +95,10 @@ const Tests = () => {
                       size="lg"
                     >
                       {card.buttonText}
-                    </Button>
-                  </Link>
-                </div>
+                  </Button>
+                </Link>
               </div>
+            </motion.div>
             )
           })}
         </div>

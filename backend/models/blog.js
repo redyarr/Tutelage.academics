@@ -81,12 +81,7 @@ module.exports = (sequelize, DataTypes) => {
         comment: 'URL or path to downloadable PDF for this blog'
       },
       
-      // Task-specific downloadable PDF (e.g., worksheets or task sheets)
-      taskPdf: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: 'Optional URL for task-specific PDF associated with this blog'
-      },
+      
       
       // Author relationship field
       createdBy: { 
@@ -114,6 +109,7 @@ module.exports = (sequelize, DataTypes) => {
       as: 'author',
       onDelete: 'CASCADE'
     });
+    Blog.hasMany(models.TaskPdf, { foreignKey: 'resourceId', constraints: false, scope: { resourceType: 'blog' }, as: 'taskPdfs' });
   };
 
   return Blog;

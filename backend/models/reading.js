@@ -63,12 +63,7 @@ module.exports = (sequelize, DataTypes) => {
         comment: 'URL or path to downloadable PDF for the reading content'
       },
 
-      // Task-specific PDF reference (secondary)
-      taskPdf: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: 'URL or path to task-specific downloadable PDF for the reading content'
-      },
+      
 
       // Tags array for reading content (optional)
       tags: {
@@ -106,6 +101,7 @@ module.exports = (sequelize, DataTypes) => {
       as: 'author',
       onDelete: 'CASCADE'
     });
+    Reading.hasMany(models.TaskPdf, { foreignKey: 'resourceId', constraints: false, scope: { resourceType: 'reading' }, as: 'taskPdfs' });
   };
 
   return Reading;

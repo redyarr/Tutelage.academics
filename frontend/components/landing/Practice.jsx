@@ -3,6 +3,8 @@ import { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { motion } from "framer-motion";
+import { useInView } from "framer-motion";
 import BASE_URL from '@/app/config/url' // added import for fetching
 
 const Practice = () => {
@@ -13,6 +15,8 @@ const Practice = () => {
 	const [isTransitioning, setIsTransitioning] = useState(true);
 	const [cardsPerView, setCardsPerView] = useState(3.5);
 	const sliderRef = useRef(null);
+	const sectionRef = useRef(null);
+	const isInView = useInView(sectionRef, { once: true, margin: "-100px" });
 
 	// dynamic articles fetched from backend
 	const [articles, setArticles] = useState([]);
@@ -42,24 +46,24 @@ const Practice = () => {
 		if (totalCards > 0) setCurrentIndex(totalCards);
 	}, [totalCards]);
 
-	// fetch first page of blogs with limit=10
+	// fetch daily featured resources (3 from each: blogs, stories, videos, audios)
 	useEffect(() => {
 		let mounted = true;
 		const fetchArticles = async () => {
 			setLoading(true);
 			try {
-				const res = await fetch(`${BASE_URL}/api/blogs/paginated?page=1&limit=10`, { credentials: 'include' });
+				const res = await fetch(`${BASE_URL}/api/esl-resources/daily-featured`, { credentials: 'include' });
 				if (!res.ok) {
-					console.error('Failed to fetch articles', res.status);
+					console.error('Failed to fetch daily featured resources', res.status);
 					if (mounted) setArticles([]);
 					return;
 				}
 				const data = await res.json();
-				// Expect data.success && data.data.blogs
-				const items = data?.data?.blogs || (Array.isArray(data?.blogs) ? data.blogs : []);
+				// Expect data.success && data.data (array of mixed resources)
+				const items = data?.data || [];
 				if (mounted) setArticles(Array.isArray(items) ? items : []);
 			} catch (err) {
-				console.error('Error fetching articles:', err);
+				console.error('Error fetching daily featured resources:', err);
 				if (mounted) setArticles([]);
 			} finally {
 				if (mounted) setLoading(false);
@@ -126,12 +130,17 @@ const Practice = () => {
 	};
 
 	return (
-		<section className="py-16 px-4 sm:px-6 lg:px-8 bg-background">
+		<section className="py-16 px-4 sm:px-6 lg:px-8 bg-background" ref={sectionRef}>
 			<div className="max-w-7xl mx-auto">
 				{/* Title */}
-				<h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-center mb-12 text-foreground">
+				<motion.h2
+					initial={{ opacity: 0 }}
+					animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+					transition={{ duration: 0.6, delay: 0.3 }}
+					className="text-3xl sm:text-4xl lg:text-5xl font-bold text-center mb-12 text-foreground"
+				>
 					Practice anytime with our free resources
-				</h2>
+				</motion.h2>
 
 				{/* Slider Container */}
 				<div className="relative md:px-16">
@@ -171,8 +180,8 @@ const Practice = () => {
 								))
 							) : (
 								extendedCards.map((item, index) => (
-									<div key={`${item.id}-${index}`} className="flex-shrink-0 px-2 sm:px-3" style={{ width: `${100 / cardsPerView}%` }}>
-										<Link href={`/esl-resources/blogs/${item.id}`}>
+									<div key={`${item.id}-${item.resourceType}-${index}`} className="flex-shrink-0 px-2 sm:px-3" style={{ width: `${100 / cardsPerView}%` }}>
+										<Link href={item.link || `/esl-resources/blogs/${item.id}`}>
 											<div className="bg-card rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300 h-full border border-border">
 												{/* Image */}
 												<div className="aspect-video overflow-hidden">
@@ -190,7 +199,7 @@ const Practice = () => {
 														{item.title}
 													</h3>
 													<p className="text-sm sm:text-base text-muted-foreground">
-														{truncateText(item.description || item.description, 80)}
+														{truncateText(item.description, 80)}
 													</p>
 												</div>
 											</div>
@@ -213,14 +222,20 @@ const Practice = () => {
 
 				{/* All Resources Button */}
 				<div className="flex justify-center mt-12">
-					<Link href="/esl-resources">
-						<Button
-							size="lg"
-							className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-base sm:text-lg font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
-						>
-							All Resources
-						</Button>
-					</Link>
+					<motion.div
+						initial={{ opacity: 0 }}
+						animate={isInView ? { opacity: 1 } : { opacity: 0 }}
+						transition={{ duration: 0.6, delay: 0.2 }}
+					>
+						<Link href="/esl-resources">
+							<Button
+								size="lg"
+								className="bg-primary hover:bg-primary/90 text-primary-foreground px-8 py-6 text-base sm:text-lg font-semibold rounded-lg shadow-md hover:shadow-lg transition-all"
+							>
+								All Resources
+							</Button>
+						</Link>
+					</motion.div>
 				</div>
 			</div>
 		</section>

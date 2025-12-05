@@ -10,10 +10,13 @@ import { toast } from "sonner"
 import BASE_URL from "@/app/config/url"
 import Image from "next/image"
 import Link from "next/link"
+import { useInfiniteScroll } from "@/app/config/useInfiniteScroll"
 
 const EslAudios = () => {
   const [audios, setAudios] = useState([])
   const [loading, setLoading] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [nextCursor, setNextCursor] = useState(null)
   const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
@@ -22,17 +25,20 @@ const EslAudios = () => {
   const [deleteAudio, setDeleteAudio] = useState(null)
   const [searchTerm, setSearchTerm] = useState("")
 
-  const fetchAudios = async () => {
+  const fetchAudios = async (reset = false) => {
     setLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams()
-      params.append("limit", 100)
+      params.append("limit", 9)
       if (searchTerm) params.append("search", searchTerm)
+      if (!reset && nextCursor) params.append("cursor", nextCursor)
       const res = await fetch(`${BASE_URL}/api/esl-audios?${params.toString()}`, { credentials: "include" })
       const data = await res.json()
       if (!data.success) throw new Error(data.message || "Failed to fetch audios")
-      setAudios(data.data || [])
+      setAudios(prev => reset ? data.data || [] : [...prev, ...(data.data || [])])
+      setHasMore(data.pagination?.hasMore ?? false)
+      setNextCursor(data.pagination?.nextCursor ?? null)
     } catch (e) {
       setError(e.message)
     } finally {
@@ -40,10 +46,19 @@ const EslAudios = () => {
     }
   }
 
+  const resetAndFetch = () => {
+    setAudios([])
+    setNextCursor(null)
+    setHasMore(true)
+    fetchAudios(true)
+  }
+
   useEffect(() => {
-    fetchAudios()
+    resetAndFetch()
     // eslint-disable-next-line
   }, [searchTerm])
+
+  const lastAudioRef = useInfiniteScroll({ loading, hasMore, onLoadMore: fetchAudios })
 
   const handleCreateSuccess = async (values) => {
     try {
@@ -66,7 +81,7 @@ const EslAudios = () => {
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.message)
       setShowCreate(false)
-      fetchAudios()
+      resetAndFetch()
       toast(data.message, { variant: "success" })
     } catch (e) {
       toast(e.message, { variant: "destructive" })
@@ -101,7 +116,7 @@ const EslAudios = () => {
       if (!res.ok || !data.success) throw new Error(data.message)
       setShowEdit(false)
       setEditAudio(null)
-      fetchAudios()
+      resetAndFetch()
       toast(data.message, { variant: "success" })
     } catch (e) {
       toast(e.message, { variant: "destructive" })
@@ -121,7 +136,7 @@ const EslAudios = () => {
       if (!res.ok || !data.success) throw new Error(data.message)
       setShowDelete(false)
       setDeleteAudio(null)
-      fetchAudios()
+      resetAndFetch()
       toast(data.message, { variant: "destructive" })
     } catch (e) {
       toast(e.message, { variant: "destructive" })
@@ -143,7 +158,7 @@ const EslAudios = () => {
       </div>
       <div className="mb-4 flex items-center justify-between gap-2">
         <Input placeholder="Search ESL audios..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="max-w-xs" />
-        <Button variant="ghost" size="icon" onClick={fetchAudios} title="Refresh audios" className="ml-2" disabled={loading}>
+        <Button variant="ghost" size="icon" onClick={resetAndFetch} title="Refresh audios" className="ml-2" disabled={loading}>
           <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
@@ -156,8 +171,8 @@ const EslAudios = () => {
         <div className="text-center text-muted-foreground py-12">No ESL audios found.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {audios.map((audio, i) => (
-            <Link key={i} href={`/admin-dashboard/eslAudios/${audio.id}`} className="relative group bg-card border border-border rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 block">
+          {audios.map((audio, idx) => (
+            <Link key={idx} href={`/admin-dashboard/eslAudios/${audio.id}`} ref={idx === audios.length - 1 ? lastAudioRef : null} className="relative group bg-card border border-border rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 block">
               <div className="relative h-44 w-full overflow-hidden">
                 <Image src={audio.imageUrl || '/placeholder-16-9.png'} alt={audio.title} fill className="object-cover" sizes="(max-width: 640px) 100vw, 33vw" />
               </div>
@@ -178,6 +193,21 @@ const EslAudios = () => {
                 </div>
             </Link>
           ))}
+        </div>
+      )}
+
+      {loading && audios.length > 0 && (
+        <div className="flex justify-center p-4 mt-4">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-4 rounded-full border-2 border-t-transparent border-blue-500 animate-spin"></div>
+            <span className="text-muted-foreground text-sm">Loading more...</span>
+          </div>
+        </div>
+      )}
+
+      {hasMore && audios.length !== 0 && !loading && (
+        <div className="flex justify-center mt-8 mb-4">
+          <Button variant="outline" onClick={() => fetchAudios()}>Show More</Button>
         </div>
       )}
 

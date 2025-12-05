@@ -46,11 +46,7 @@ module.exports = (sequelize, DataTypes) => {
         comment: 'Optional downloadable worksheet/resource PDF URL'
       },
 
-      taskPdf: {
-        type: DataTypes.STRING(500),
-        allowNull: true,
-        comment: 'Optional task-specific downloadable worksheet/resource PDF URL'
-      },
+      
       level: {
         type: DataTypes.ARRAY(DataTypes.STRING),
         allowNull: true,
@@ -74,6 +70,7 @@ module.exports = (sequelize, DataTypes) => {
       as: 'author',
       onDelete: 'CASCADE'
     });
+    EslAudio.hasMany(models.TaskPdf, { foreignKey: 'resourceId', constraints: false, scope: { resourceType: 'esl_audio' }, as: 'taskPdfs' });
   };
 
   return EslAudio;

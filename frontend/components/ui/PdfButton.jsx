@@ -51,7 +51,7 @@ export default function PdfButton({
           <a 
             href={pdfUrl} 
             download 
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm bg-secondary text-secondary-foreground rounded hover:bg-secondary/80"
+            className="hidden sm:inline-flex items-center gap-2 px-3 py-2 text-sm bg-secondary text-secondary-foreground rounded hover:bg-secondary/80"
             title="Download PDF"
           >
             <Download className="w-4 h-4" />
