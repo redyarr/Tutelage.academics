@@ -8,6 +8,7 @@
 const { Reading, User, Tag, ResourceTag, ApprovalRequest } = require('../models');
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
+const { getTasks } = require('../scripts/fetchTasks');
 
 // Convert incoming level(s) to CEFR labels as an array
 function normalizeLevels(input) {
@@ -70,7 +71,7 @@ async function includeTagsFor(resourceId) {
  */
 const createReading = async (req, res) => {
   try {
-    const { title, content, description, discription, pdf, taskPdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags } = req.body;
     const createdBy = req.user.id; // From auth middleware
     const role = req.user.role;
 
@@ -86,7 +87,7 @@ const createReading = async (req, res) => {
         content,
         description: (description ?? discription ?? null),
         pdf,
-        taskPdf,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         imageUrl: (imageUrl ?? imageurl ?? null),
         level: normalizedLevels,
         tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : [])
@@ -123,12 +124,21 @@ const createReading = async (req, res) => {
       content,
       description: (description ?? discription ?? null),
       pdf,
-      taskPdf,
       imageUrl: (imageUrl ?? imageurl ?? null),
       level: normalizedLevels,
       tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined),
       createdBy
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'reading', resourceId: reading.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     const tagNames = Array.isArray(tags) ? tags.map(t => String(t).trim()).filter(Boolean) : [];
     if (tagNames.length) await attachTags(reading.id, tagNames);
@@ -287,8 +297,10 @@ const getReadingById = async (req, res) => {
     if (!reading) {
       return res.status(404).json({ success: false, message: 'Reading content not found' });
     }
+    const tasks = await getTasks(reading.id);
+    
     const tagNames = await includeTagsFor(reading.id);
-    res.status(200).json({ success: true, message: 'Reading content fetched successfully', data: { ...reading.toJSON(), tags: tagNames } });
+    res.status(200).json({ success: true, message: 'Reading content fetched successfully', data: { ...reading.toJSON(), tags: tagNames, tasks } });
   } catch (error) {
     console.error('Error fetching reading:', error);
     res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
@@ -301,7 +313,7 @@ const getReadingById = async (req, res) => {
 const updateReading = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, description, discription, pdf, taskPdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags } = req.body;
 
     const reading = await Reading.findByPk(id);
     if (!reading) {
@@ -316,7 +328,6 @@ const updateReading = async (req, res) => {
         content: content ?? reading.content,
         description: (description ?? discription ?? reading.description),
         pdf: pdf ?? reading.pdf,
-        taskPdf: taskPdf ?? reading.taskPdf,
         imageUrl: (imageUrl ?? imageurl ?? reading.imageUrl),
         level: normalizedLevelUpdate ?? reading.level,
         tags: Array.isArray(tags)
@@ -362,13 +373,22 @@ const updateReading = async (req, res) => {
       content: content ?? reading.content,
       description: (description ?? discription ?? reading.description),
       pdf: pdf ?? reading.pdf,
-      taskPdf: taskPdf ?? reading.taskPdf,
       imageUrl: (imageUrl ?? imageurl ?? reading.imageUrl),
       level: normalizedLevelUpdate ?? reading.level,
       tags: Array.isArray(tags)
         ? tags
         : (tags !== undefined ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : reading.tags)
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'reading', resourceId: reading.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
 
     const tagNamesUpdate = Array.isArray(tags) ? tags.map(t => String(t).trim()).filter(Boolean) : [];
     if (tagNamesUpdate.length) await attachTags(reading.id, tagNamesUpdate);

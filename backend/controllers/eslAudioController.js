@@ -6,6 +6,7 @@
 const { EslAudio, Tag, ResourceTag, ResourceAnalytics, ApprovalRequest } = require('../models');
 const { Op } = require('sequelize');
 const { sendApprovalRequestNotification } = require('../config/email');
+const { getTasks } = require('../scripts/fetchTasks');
 
 const normalizeLevels = (input) => {
   if (input === undefined || input === null) return null;
@@ -61,7 +62,7 @@ const bumpAnalytics = async (resourceId, field = 'plays', amount = 1) => {
 
 exports.createEslAudio = async (req, res) => {
   try {
-    const { title, imageUrl, description, transcript, audioRef, pdf, taskPdf, level, tags } = req.body;
+    const { title, imageUrl, description, transcript, audioRef, pdf, level, tags } = req.body;
     const createdBy = req.user?.id || 1;
     const role = req.user?.role;
     
@@ -78,7 +79,7 @@ exports.createEslAudio = async (req, res) => {
         transcript,
         audioRef,
         pdf,
-        taskPdf,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         level: normalizeLevels(level),
         tags: tagNames
       };
@@ -117,10 +118,19 @@ exports.createEslAudio = async (req, res) => {
       transcript, 
       audioRef, 
       pdf, 
-      taskPdf, 
       level: normalizeLevels(level), 
       createdBy 
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'esl_audio', resourceId: audio.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
     
     // Attach tags to join table
     if (tagNames.length > 0) {
@@ -256,9 +266,10 @@ exports.getEslAudioById = async (req, res) => {
     const { id } = req.params;
     const audio = await EslAudio.findByPk(id);
     if (!audio) return res.status(404).json({ success: false, message: 'Audio not found' });
+    const tasks = await getTasks(audio.id);    
     const tags = await includeTagsFor(audio.id);
     const metrics = await bumpAnalytics(audio.id, 'views', 1); // count a detail view
-    res.status(200).json({ success: true, data: { ...audio.toJSON(), tags, metrics } });
+    res.status(200).json({ success: true, data: { ...audio.toJSON(), tags, metrics, tasks } });
   } catch (err) {
     console.error('Error fetching ESL audio:', err);
     res.status(500).json({ success: false, message: 'Internal server error', error: err.message });
@@ -268,7 +279,7 @@ exports.getEslAudioById = async (req, res) => {
 exports.updateEslAudio = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, imageUrl, description, transcript, audioRef, pdf, taskPdf, level, tags } = req.body;
+    const { title, imageUrl, description, transcript, audioRef, pdf, level, tags } = req.body;
     const audio = await EslAudio.findByPk(id);
     if (!audio) return res.status(404).json({ success: false, message: 'Audio not found' });
     const role = req.user?.role;
@@ -288,7 +299,7 @@ exports.updateEslAudio = async (req, res) => {
       if (transcript !== undefined) payload.transcript = transcript;
       if (audioRef !== undefined) payload.audioRef = audioRef;
       if (pdf !== undefined) payload.pdf = pdf;
-      if (taskPdf !== undefined) payload.taskPdf = taskPdf;
+      if (Array.isArray(req.body?.taskPdfs)) payload.taskPdfs = req.body.taskPdfs;
       if (level !== undefined) payload.level = normalizeLevels(level);
       if (tagNames !== null) payload.tags = tagNames;
       const approval = await ApprovalRequest.create({
@@ -325,9 +336,18 @@ exports.updateEslAudio = async (req, res) => {
       transcript, 
       audioRef, 
       pdf, 
-      taskPdf, 
       level: normalizeLevels(level) 
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'esl_audio', resourceId: audio.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
     
     // Update tags if provided
     if (tagNames !== null) {

@@ -6,6 +6,7 @@
 const { EslVideo, Tag, ResourceTag, ResourceAnalytics, ApprovalRequest } = require('../models');
 const { Op } = require('sequelize');
 const { sendApprovalRequestNotification } = require('../config/email');
+const { getTasks } = require('../scripts/fetchTasks');
 
 // Helpers
 const normalizeLevels = (input) => {
@@ -76,7 +77,7 @@ const bumpAnalytics = async (resourceId, field = 'views', amount = 1) => {
 
 exports.createEslVideo = async (req, res) => {
   try {
-    const { title, videoRef, description, pdf, taskPdf, level, tags } = req.body;
+    const { title, videoRef, description, pdf, level, tags } = req.body;
     const normalizedLevel = normalizeLevels(level);
     const thumbnailUrl = getYouTubeThumbnail(videoRef);
     const createdBy = req.user?.id || 1;
@@ -93,7 +94,7 @@ exports.createEslVideo = async (req, res) => {
         videoRef,
         description,
         pdf,
-        taskPdf,
+        taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         level: normalizedLevel,
         thumbnailUrl,
         tags: tagNames
@@ -131,12 +132,21 @@ exports.createEslVideo = async (req, res) => {
       videoRef, 
       description, 
       pdf, 
-      taskPdf, 
       level: normalizedLevel, 
       thumbnailUrl, 
-      tags: tagNames.length ? tagNames : null, // Store in array column too
+      tags: tagNames.length ? tagNames : null, 
       createdBy 
     });
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'esl_video', resourceId: video.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
     
     // Also sync to join table for relational queries
     if (tagNames.length) await attachTags(video.id, tagNames);
@@ -265,9 +275,10 @@ exports.getEslVideoById = async (req, res) => {
     const { id } = req.params;
     const video = await EslVideo.findByPk(id);
     if (!video) return res.status(404).json({ success: false, message: 'Video not found' });
+    const tasks = await getTasks(video.id);
     const tags = await includeTagsFor(video.id);
     const metrics = await bumpAnalytics(video.id, 'views', 1);
-    res.status(200).json({ success: true, message: 'Esl Video fetched successfully', data: { ...video.toJSON(), tags, metrics } });
+    res.status(200).json({ success: true, message: 'Esl Video fetched successfully', data: { ...video.toJSON(), tags, metrics, tasks } });
   } catch (err) {
     console.error('Error fetching ESL video:', err);
     res.status(500).json({ success: false, message: 'Internal server error', error: err.message });
@@ -277,7 +288,7 @@ exports.getEslVideoById = async (req, res) => {
 exports.updateEslVideo = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, videoRef, description, pdf, taskPdf, level, tags } = req.body;
+    const { title, videoRef, description, pdf, level, tags } = req.body;
     const video = await EslVideo.findByPk(id);
     if (!video) return res.status(404).json({ success: false, message: 'Video not found' });
     const role = req.user?.role;
@@ -295,7 +306,7 @@ exports.updateEslVideo = async (req, res) => {
       if (videoRef !== undefined) payload.videoRef = videoRef;
       if (description !== undefined) payload.description = description;
       if (pdf !== undefined) payload.pdf = pdf;
-      if (taskPdf !== undefined) payload.taskPdf = taskPdf;
+      if (Array.isArray(req.body?.taskPdfs)) payload.taskPdfs = req.body.taskPdfs;
       if (level !== undefined) payload.level = normalizeLevels(level);
       if (videoRef !== undefined) payload.thumbnailUrl = getYouTubeThumbnail(videoRef);
       if (tagNames !== null) payload.tags = tagNames;
@@ -331,7 +342,6 @@ exports.updateEslVideo = async (req, res) => {
       videoRef, 
       description, 
       pdf, 
-      taskPdf, 
       level: normalizeLevels(level) 
     };
     if (videoRef) payload.thumbnailUrl = getYouTubeThumbnail(videoRef);
@@ -342,6 +352,16 @@ exports.updateEslVideo = async (req, res) => {
     }
     
     await video.update(payload);
+
+    if (Array.isArray(req.body?.taskPdfs) && req.body.taskPdfs.length) {
+      const rows = req.body.taskPdfs
+        .filter(p => p && p.filePath && p.fileName)
+        .map(p => ({ resourceType: 'esl_video', resourceId: video.id, filePath: p.filePath, fileName: p.fileName, fileSize: p.fileSize || null, uploadDate: p.uploadDate ? new Date(p.uploadDate) : new Date() }));
+      if (rows.length) {
+        const { TaskPdf } = require('../models');
+        await TaskPdf.bulkCreate(rows);
+      }
+    }
     
     // Sync join table if tags were provided
     if (tagNames !== null) {
