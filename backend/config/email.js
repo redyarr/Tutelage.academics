@@ -40,8 +40,7 @@ async function sendEnrollmentApplicationEmail(enrollmentData) {
     phone,
     age,
     profession,
-    course,
-    proficiencyType
+    course
   } = enrollmentData;
   
   const currentDate = new Date().toLocaleDateString();
@@ -103,13 +102,6 @@ async function sendEnrollmentApplicationEmail(enrollmentData) {
                 <td style="padding: 8px 0; font-weight: bold; color: #333;">Course Applied:</td>
                 <td style="padding: 8px 0; color: #f59e0b; font-weight: bold;">${course}</td>
               </tr>
-              ${
-                proficiencyType && 
-                `<tr>
-                <td style="padding: 8px 0; font-weight: bold; color: #333;">Course Applied:</td>
-                <td style="padding: 8px 0; color: #f59e0b; font-weight: bold;">${proficiencyType}</td>
-              </tr>`
-              }
             </table>
           </div>
           
@@ -252,12 +244,12 @@ async function sendPricingRequestEmail(pricingData) {
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 700px; margin: 0 auto; background-color: #ffffff;">
         <!-- Header with Tutelage branding -->
         <div style="background: linear-gradient(135deg, #f59e0b 0%, #fec016 100%); padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0;">
-          <div style="display: flex; align-items: center; justify-content: center; gap: 12px;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <div style="display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%;">
+            <h1 style="width: 100%; color: #ffffff; margin: 0; font-size: 28px; font-weight: bold; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">
               TUTELAGE
             </h1>
           </div>
-          <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">
+          <p style="width: 100%; color: #ffffff; margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">
             English Learning Platform
           </p>
         </div>
@@ -339,7 +331,7 @@ async function sendPricingRequestEmail(pricingData) {
             <p style="color: #166534; margin: 0; line-height: 1.6; font-size: 14px;">
               <strong>Contact our enrollment team:</strong><br>
               📧 Email: Info@tutelage.krd<br>
-              📱 Phone: (964+) 07501534240 or (964+) 07701946364<br>
+              📱 Phone: (+964) 07501534240 or (+964) 07701946364<br>
               <br>
               Our team will be happy to discuss pricing details, payment plans, and help you choose the best option for your child!
             </p>
@@ -1477,12 +1469,10 @@ async function sendContactEmail(contactData) {
                 <td style="padding: 8px 0; font-weight: bold; color: #333;">Country:</td>
                 <td style="padding: 8px 0; color: #666;">${country}</td>
               </tr>
-              ${topic && `
               <tr>
                 <td style="padding: 8px 0; font-weight: bold; color: #333;">Topic:</td>
                 <td style="padding: 8px 0; color: #f59e0b; font-weight: bold;">${topic}</td>
               </tr>
-                `}
             </table>
           </div>
           

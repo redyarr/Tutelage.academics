@@ -139,6 +139,7 @@ const processPricingRequest = async (req, res) => {
     
     // Send pricing email to user
     try {
+      //add some condition to send different emails based on course 
       await sendPricingRequestEmail(pricingData);
       
       console.log('✅ Pricing email sent successfully');
