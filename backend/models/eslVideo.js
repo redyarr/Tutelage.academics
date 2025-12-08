@@ -47,6 +47,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: true,
         comment: 'Language levels (e.g., ["B1 Intermediate"])'
       },
+      category: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: 'Video category (e.g., Science, Math, Conversation)'
+      },
       createdBy: {
         type: DataTypes.INTEGER.UNSIGNED,
         allowNull: false,

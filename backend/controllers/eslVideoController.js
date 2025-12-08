@@ -77,7 +77,7 @@ const bumpAnalytics = async (resourceId, field = 'views', amount = 1) => {
 
 exports.createEslVideo = async (req, res) => {
   try {
-    const { title, videoRef, description, pdf, level, tags } = req.body;
+    const { title, videoRef, description, pdf, level, tags, category } = req.body;
     const normalizedLevel = normalizeLevels(level);
     const thumbnailUrl = getYouTubeThumbnail(videoRef);
     const createdBy = req.user?.id || 1;
@@ -134,7 +134,8 @@ exports.createEslVideo = async (req, res) => {
       pdf, 
       level: normalizedLevel, 
       thumbnailUrl, 
-      tags: tagNames.length ? tagNames : null, 
+      tags: tagNames.length ? tagNames : null,
+      category: category || null,
       createdBy 
     });
 
@@ -170,10 +171,24 @@ exports.createEslVideo = async (req, res) => {
 
 exports.getAllEslVideos = async (req, res) => {
   try {
-    const { cursor, page, limit = 9, search, level, tags, sortBy = 'createdAt', sortOrder = 'DESC' } = req.query;
+    const { cursor, page, limit = 9, search, level, tags, category, sortBy = 'createdAt', sortOrder = 'DESC' } = req.query;
     const where = {};
     
-    if (search) where.title = { [Op.like]: `%${search}%` };
+    // Enhanced search across title, description, tags, and category (case-insensitive)
+    if (search) {
+      const searchTerm = search.trim();
+      where[Op.or] = [
+        { title: { [Op.iLike]: `%${searchTerm}%` } },
+        { description: { [Op.iLike]: `%${searchTerm}%` } },
+        { tags: { [Op.overlap]: [searchTerm] } },
+        { category: { [Op.iLike]: `%${searchTerm}%` } }
+      ];
+    }
+    
+    // Category filter (case-insensitive)
+    if (category) {
+      where.category = { [Op.iLike]: category.trim() };
+    }
     
     const levelsFilter = normalizeLevels(level);
     if (levelsFilter) where.level = { [Op.overlap]: levelsFilter };
@@ -300,7 +315,7 @@ exports.getEslVideoById = async (req, res) => {
 exports.updateEslVideo = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, videoRef, description, pdf, level, tags, deletedTaskPdfIds } = req.body;
+    const { title, videoRef, description, pdf, level, tags, category, deletedTaskPdfIds } = req.body;
     const video = await EslVideo.findByPk(id);
     if (!video) return res.status(404).json({ success: false, message: 'Video not found' });
     const role = req.user?.role;
@@ -322,6 +337,7 @@ exports.updateEslVideo = async (req, res) => {
       if (level !== undefined) payload.level = normalizeLevels(level);
       if (videoRef !== undefined) payload.thumbnailUrl = getYouTubeThumbnail(videoRef);
       if (tagNames !== null) payload.tags = tagNames;
+      if (category !== undefined) payload.category = category;
       const approval = await ApprovalRequest.create({
         resourceType: 'EslVideo',
         resourceId: video.id,
@@ -357,6 +373,11 @@ exports.updateEslVideo = async (req, res) => {
       level: normalizeLevels(level) 
     };
     if (videoRef) payload.thumbnailUrl = getYouTubeThumbnail(videoRef);
+    
+    // Update category if provided
+    if (category !== undefined) {
+      payload.category = category;
+    }
     
     // Update tags array column if tags were provided
     if (tagNames !== null) {
