@@ -80,6 +80,13 @@ const createReading = async (req, res) => {
     }
 
     const normalizedLevels = normalizeLevels(level);
+    
+    // Parse tags from comma-separated string to array
+    const tagNames = tags 
+      ? (Array.isArray(tags) 
+          ? tags.map(t => String(t).trim()).filter(Boolean)
+          : String(tags).split(',').map(t => t.trim()).filter(Boolean))
+      : [];
 
     if (role === 'MAIN_MANAGER') {
       const payload = {
@@ -90,7 +97,7 @@ const createReading = async (req, res) => {
         taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         imageUrl: (imageUrl ?? imageurl ?? null),
         level: normalizedLevels,
-        tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : [])
+        tags: tagNames
       };
       const approval = await ApprovalRequest.create({
         resourceType: 'Reading',
@@ -126,7 +133,7 @@ const createReading = async (req, res) => {
       pdf,
       imageUrl: (imageUrl ?? imageurl ?? null),
       level: normalizedLevels,
-      tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined),
+      tags: tagNames.length ? tagNames : null, // Store parsed array in DB
       createdBy
     });
 
@@ -148,11 +155,14 @@ const createReading = async (req, res) => {
       }
     }
 
-    const tagNames = Array.isArray(tags) ? tags.map(t => String(t).trim()).filter(Boolean) : [];
+    // Sync tags to join table
     if (tagNames.length) await attachTags(reading.id, tagNames);
 
     const readingWithAuthor = await Reading.findByPk(reading.id, {
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }]
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ]
     });
 
     res.status(201).json({
@@ -337,6 +347,13 @@ const updateReading = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Reading content not found' });
     }
 
+    // Parse tags from comma-separated string to array
+    const tagNames = tags !== undefined
+      ? (Array.isArray(tags) 
+          ? tags.map(t => String(t).trim()).filter(Boolean)
+          : String(tags).split(',').map(t => t.trim()).filter(Boolean))
+      : null;
+
     // Role handling: MAIN_MANAGER queues approval, ADMIN applies immediately
     if (req.user.role === 'MAIN_MANAGER') {
       const normalizedLevelUpdate = level !== undefined ? normalizeLevels(level) : reading.level;
@@ -347,9 +364,7 @@ const updateReading = async (req, res) => {
         pdf: pdf ?? reading.pdf,
         imageUrl: (imageUrl ?? imageurl ?? reading.imageUrl),
         level: normalizedLevelUpdate ?? reading.level,
-        tags: Array.isArray(tags)
-          ? tags
-          : (tags !== undefined ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined)
+        tags: tagNames
       };
       const approval = await ApprovalRequest.create({
         resourceType: 'Reading',
@@ -410,9 +425,7 @@ const updateReading = async (req, res) => {
       pdf: pdf ?? reading.pdf,
       imageUrl: (imageUrl ?? imageurl ?? reading.imageUrl),
       level: normalizedLevelUpdate ?? reading.level,
-      tags: Array.isArray(tags)
-        ? tags
-        : (tags !== undefined ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : reading.tags)
+      tags: tagNames !== null ? (tagNames.length ? tagNames : null) : reading.tags // Store parsed array
     });
 
     // Handle multiple task PDFs
@@ -433,10 +446,24 @@ const updateReading = async (req, res) => {
       }
     }
 
+    // Sync join-table tags
+    if (tagNames !== null) {
+      await ResourceTag.destroy({ where: { resourceType: 'reading', resourceId: id } });
+      if (tagNames.length) await attachTags(reading.id, tagNames);
+    }
+
     const updatedReading = await Reading.findByPk(id, {
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }]
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ]
     });
-    res.status(200).json({ success: true, message: 'Reading content updated successfully', data: { ...updatedReading.toJSON(), tags: await includeTagsFor(reading.id) } });
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'Reading content updated successfully', 
+      data: { ...updatedReading.toJSON(), tags: await includeTagsFor(reading.id) } 
+    });
   } catch (error) {
     console.error('Error updating reading:', error);
     res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
@@ -486,6 +513,8 @@ const deleteReading = async (req, res) => {
       return res.status(403).json({ success: false, message: 'You can only delete your own reading content' });
     }
 
+    // Clean up join-table tag mappings
+    await ResourceTag.destroy({ where: { resourceType: 'reading', resourceId: id } });
     await reading.destroy();
     res.status(200).json({ success: true, message: 'Reading content deleted successfully' });
   } catch (error) {

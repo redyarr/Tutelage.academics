@@ -71,7 +71,7 @@ async function includeTagsFor(resourceId) {
 const createWriting = async (req, res) => {
   try {
     const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags } = req.body;
-    const createdBy = req.user.id; // From auth middleware
+    const createdBy = req.user.id;
     const role = req.user.role;
 
     if (!title) {
@@ -82,6 +82,13 @@ const createWriting = async (req, res) => {
     }
 
     const normalizedLevels = normalizeLevels(level);
+    
+    // Parse tags from comma-separated string to array
+    const tagNames = tags 
+      ? (Array.isArray(tags) 
+          ? tags.map(t => String(t).trim()).filter(Boolean)
+          : String(tags).split(',').map(t => t.trim()).filter(Boolean))
+      : [];
 
     if (role === 'MAIN_MANAGER') {
       const payload = {
@@ -92,7 +99,7 @@ const createWriting = async (req, res) => {
         taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         imageUrl: (imageUrl ?? imageurl ?? null),
         level: normalizedLevels,
-        tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : [])
+        tags: tagNames
       };
       const approval = await ApprovalRequest.create({
         resourceType: 'Writing',
@@ -128,7 +135,7 @@ const createWriting = async (req, res) => {
       pdf,
       imageUrl: (imageUrl ?? imageurl ?? null),
       level: normalizedLevels,
-      tags: Array.isArray(tags) ? tags : (tags ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined),
+      tags: tagNames.length ? tagNames : null, // Store parsed array in DB
       createdBy
     });
 
@@ -150,14 +157,14 @@ const createWriting = async (req, res) => {
       }
     }
 
-    // Sync tags to join table while preserving array column for compatibility
-    const tagNames = Array.isArray(tags)
-      ? tags.map(t => String(t).trim()).filter(Boolean)
-      : [];
+    // Sync tags to join table
     if (tagNames.length) await attachTags(writing.id, tagNames);
 
     const writingWithAuthor = await Writing.findByPk(writing.id, {
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }]
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ]
     });
 
     res.status(201).json({
@@ -334,7 +341,14 @@ const updateWriting = async (req, res) => {
     if (!writing) {
       return res.status(404).json({ success: false, message: 'Writing content not found' });
     }
-    // Role handling: MAIN_MANAGER queues approval, ADMIN applies immediately
+    
+    // Parse tags from comma-separated string to array
+    const tagNames = tags !== undefined
+      ? (Array.isArray(tags) 
+          ? tags.map(t => String(t).trim()).filter(Boolean)
+          : String(tags).split(',').map(t => t.trim()).filter(Boolean))
+      : null;
+    
     if (req.user.role === 'MAIN_MANAGER') {
       const normalizedLevelUpdate = level !== undefined
         ? normalizeLevels(level)
@@ -347,9 +361,7 @@ const updateWriting = async (req, res) => {
         pdf: pdf ?? writing.pdf,
         imageUrl: (imageUrl ?? imageurl ?? writing.imageUrl),
         level: normalizedLevelUpdate ?? writing.level,
-        tags: Array.isArray(tags)
-          ? tags
-          : (tags !== undefined ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : undefined)
+        tags: tagNames
       };
 
       const approval = await ApprovalRequest.create({
@@ -414,9 +426,7 @@ const updateWriting = async (req, res) => {
       pdf: pdf ?? writing.pdf,
       imageUrl: (imageUrl ?? imageurl ?? writing.imageUrl),
       level: normalizedLevelUpdate ?? writing.level,
-      tags: Array.isArray(tags)
-        ? tags
-        : (tags !== undefined ? String(tags).split(',').map(t => t.trim()).filter(Boolean) : writing.tags)
+      tags: tagNames !== null ? (tagNames.length ? tagNames : null) : writing.tags // Store parsed array
     });
 
     // Handle multiple task PDFs
@@ -438,15 +448,23 @@ const updateWriting = async (req, res) => {
     }
 
     // Sync join-table tags
-    const tagNamesUpdate = Array.isArray(tags)
-      ? tags.map(t => String(t).trim()).filter(Boolean)
-      : [];
-    if (tagNamesUpdate.length) await attachTags(writing.id, tagNamesUpdate);
+    if (tagNames !== null) {
+      await ResourceTag.destroy({ where: { resourceType: 'writing', resourceId: id } });
+      if (tagNames.length) await attachTags(writing.id, tagNames);
+    }
 
     const updatedWriting = await Writing.findByPk(id, {
-      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }]
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
+        { model: TaskPdf, as: 'taskPdfs' }
+      ]
     });
-    res.status(200).json({ success: true, message: 'Writing content updated successfully', data: { ...updatedWriting.toJSON(), tags: await includeTagsFor(writing.id) } });
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'Writing content updated successfully', 
+      data: { ...updatedWriting.toJSON(), tags: await includeTagsFor(writing.id) } 
+    });
   } catch (error) {
     console.error('Error updating writing:', error);
     res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
