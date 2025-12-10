@@ -320,7 +320,7 @@ const getWritingById = async (req, res) => {
     if (!writing) {
       return res.status(404).json({ success: false, message: 'Writing content not found' });
     }
-    const tasks = await getTasks(writing.id, "writing");
+    const tasks = await getTasks(writing.id);
     
     const tagNames = await includeTagsFor(writing.id);
     res.status(200).json({ success: true, message: 'Writing content fetched successfully', data: { ...writing.toJSON(), tags: tagNames, tasks } });
@@ -336,7 +336,8 @@ const getWritingById = async (req, res) => {
 const updateWriting = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags, deletedTaskPdfIds } = req.body;
+    const { title, content, description, discription, pdf, level, imageUrl, contentImageUrl, tags, deletedTaskPdfIds } = req.body;
+    console.log(contentImageUrl)
     const writing = await Writing.findByPk(id);
     if (!writing) {
       return res.status(404).json({ success: false, message: 'Writing content not found' });
@@ -360,6 +361,7 @@ const updateWriting = async (req, res) => {
         description: (description ?? discription ?? writing.description),
         pdf: pdf ?? writing.pdf,
         imageUrl: (imageUrl ?? imageurl ?? writing.imageUrl),
+        contentImageUrl: contentImageUrl ?? writing.contentImageUrl,
         level: normalizedLevelUpdate ?? writing.level,
         tags: tagNames
       };
@@ -424,7 +426,8 @@ const updateWriting = async (req, res) => {
       content: content ?? writing.content,
       description: (description ?? discription ?? writing.description),
       pdf: pdf ?? writing.pdf,
-      imageUrl: (imageUrl ?? imageurl ?? writing.imageUrl),
+      imageUrl: (imageUrl ?? imageUrl ?? writing.imageUrl),
+      contentImageUrl: contentImageUrl ?? writing.contentImageUrl,
       level: normalizedLevelUpdate ?? writing.level,
       tags: tagNames !== null ? (tagNames.length ? tagNames : null) : writing.tags // Store parsed array
     });
