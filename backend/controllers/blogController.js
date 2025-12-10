@@ -334,7 +334,7 @@ const getBlogById = async (req, res) => {
     }
 
     const tagList = await includeTagsFor(blog.id);
-    const tasks = await getTasks(blog.id);
+    const tasks = await getTasks(blog.id, "blog");
 
     res.status(200).json({
       success: true,

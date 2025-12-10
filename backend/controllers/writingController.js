@@ -320,7 +320,7 @@ const getWritingById = async (req, res) => {
     if (!writing) {
       return res.status(404).json({ success: false, message: 'Writing content not found' });
     }
-    const tasks = await getTasks(writing.id);
+    const tasks = await getTasks(writing.id, "writing");
     
     const tagNames = await includeTagsFor(writing.id);
     res.status(200).json({ success: true, message: 'Writing content fetched successfully', data: { ...writing.toJSON(), tags: tagNames, tasks } });

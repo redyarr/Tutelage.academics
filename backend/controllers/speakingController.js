@@ -384,7 +384,7 @@ const getSpeakingById = async (req, res) => {
     }
 
     const tagNames = await includeTagsFor(speaking.id);
-    const tasks = await getTasks(speaking.id);
+    const tasks = await getTasks(speaking.id, "speaking");
     
     res.status(200).json({ success: true, message: 'Speaking content fetched successfully', data: { ...speaking.toJSON(), tags: tagNames, tasks } });
   } catch (error) {

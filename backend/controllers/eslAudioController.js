@@ -277,7 +277,7 @@ exports.getEslAudioById = async (req, res) => {
       include: [{ model: TaskPdf, as: 'taskPdfs' }] // Added TaskPdf include
     });
     if (!audio) return res.status(404).json({ success: false, message: 'Audio not found' });
-    const tasks = await getTasks(audio.id);    
+    const tasks = await getTasks(audio.id, "esl_audio");    
     const tags = await includeTagsFor(audio.id);
     const metrics = await bumpAnalytics(audio.id, 'views', 1);
     res.status(200).json({ success: true, data: { ...audio.toJSON(), tags, metrics, tasks } });

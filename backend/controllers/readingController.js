@@ -324,7 +324,7 @@ const getReadingById = async (req, res) => {
     if (!reading) {
       return res.status(404).json({ success: false, message: 'Reading content not found' });
     }
-    const tasks = await getTasks(reading.id);
+    const tasks = await getTasks(reading.id, "reading");
     
     const tagNames = await includeTagsFor(reading.id);
     res.status(200).json({ success: true, message: 'Reading content fetched successfully', data: { ...reading.toJSON(), tags: tagNames, tasks } });

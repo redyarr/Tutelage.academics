@@ -274,7 +274,7 @@ exports.getStoryById = async (req, res) => {
     if (!story) return res.status(404).json({ success: false, message: 'Story not found' });
     const analytics = await ensureAnalytics(story.id);
     await analytics.update({ views: analytics.views + 1 });
-    const tasks = await getTasks(story.id);
+    const tasks = await getTasks(story.id, "story");
     console.log("this is tasks: ", tasks);
     
     // Attach tag names

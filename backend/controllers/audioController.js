@@ -406,7 +406,7 @@ const getAudioById = async (req, res) => {
 
     // Include tag names in detail response
     const tagList = await includeTagsFor(audio.id);
-    const tasks = await getTasks(audio.id);
+    const tasks = await getTasks(audio.id, "audio");
     
     res.status(200).json({
       success: true,
