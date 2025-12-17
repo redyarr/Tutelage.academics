@@ -136,7 +136,12 @@ const getLandingSectionById = async (req, res) => {
     });
 
     if (!entry) {
-      return res.status(404).json({ success: false, message: 'Landing section not found' });
+      const entry = await LandingSection.create({ title: "Welcome to Our Platform", subtitle: "Empowering Your Learning Journey", imageUrl: "https://www.shutterstock.com/image-photo/introduction-presentation-concept-male-hand-260nw-2287141137.jpg", createdBy: 1 });
+     return res.status(200).json({
+      success: true,
+      message: 'Landing section fetched successfully',
+      landingSection: entry
+    });
     }
 
     return res.status(200).json({
