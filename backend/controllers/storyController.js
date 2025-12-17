@@ -209,12 +209,22 @@ exports.getAllStories = async (req, res) => {
         rows.sort((a,b) => (map.get(b.id) || 0) - (map.get(a.id) || 0));
       }
 
+      // Attach tags for each story
+      const enriched = await Promise.all(rows.map(async (row) => {
+        const mappings = await ResourceTag.findAll({ 
+          where: { resourceType: 'story', resourceId: row.id }, 
+          include: [{ model: Tag, as: 'tag' }] 
+        });
+        const tagNames = mappings.map(m => m.tag?.name).filter(Boolean);
+        return { ...row.toJSON(), tags: tagNames };
+      }));
+
       const totalPages = Math.ceil(count / itemsPerPage);
       return res.status(200).json({ 
         success: true, 
         message: 'Stories fetched successfully',
         data: { 
-          stories: rows, 
+          stories: enriched, 
           pagination: { 
             currentPage, 
             totalPages, 
@@ -238,7 +248,7 @@ exports.getAllStories = async (req, res) => {
       where,
       include: [
         { model: User, as: 'author', attributes: ['id', 'name', 'email'] },
-        { model: TaskPdf, as: 'taskPdfs' } // Added TaskPdf include
+        { model: TaskPdf, as: 'taskPdfs' }, // Added TaskPdf include
       ],
       limit: fetchLimit,
       order: [[sortBy, (sortOrder || 'DESC').toUpperCase()], ['id', (sortOrder || 'DESC').toUpperCase()]],
@@ -254,8 +264,19 @@ exports.getAllStories = async (req, res) => {
 
     const hasMore = stories.length > parseInt(limit);
     const items = hasMore ? stories.slice(0, parseInt(limit)) : stories;
-    const nextCursor = items.length > 0 ? items[items.length - 1].id : null;
-    res.status(200).json({ success: true, data: { stories: items, pagination: { nextCursor, hasMore, itemsPerPage: parseInt(limit), totalItemsReturned: items.length } } });
+
+    // Attach tags for each story
+    const enriched = await Promise.all(items.map(async (row) => {
+      const mappings = await ResourceTag.findAll({ 
+        where: { resourceType: 'story', resourceId: row.id }, 
+        include: [{ model: Tag, as: 'tag' }] 
+      });
+      const tagNames = mappings.map(m => m.tag?.name).filter(Boolean);
+      return { ...row.toJSON(), tags: tagNames };
+    }));
+
+    const nextCursor = enriched.length > 0 ? enriched[enriched.length - 1].id : null;
+    res.status(200).json({ success: true, data: { stories: enriched, pagination: { nextCursor, hasMore, itemsPerPage: parseInt(limit), totalItemsReturned: enriched.length } } });
   } catch (err) {
     console.error('Error fetching stories:', err);
     res.status(500).json({ success: false, message: 'Internal server error', error: err.message });
@@ -274,8 +295,7 @@ exports.getStoryById = async (req, res) => {
     if (!story) return res.status(404).json({ success: false, message: 'Story not found' });
     const analytics = await ensureAnalytics(story.id);
     await analytics.update({ views: analytics.views + 1 });
-    const tasks = await getTasks(story.id, "story");
-    console.log("this is tasks: ", tasks);
+    const tasks = await getTasks(story.id);
     
     // Attach tag names
     const mappings = await ResourceTag.findAll({ where: { resourceType: 'story', resourceId: story.id }, include: [{ model: Tag, as: 'tag' }] });
