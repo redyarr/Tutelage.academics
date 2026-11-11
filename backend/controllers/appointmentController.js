@@ -333,7 +333,7 @@ const getAppointmentsByStatus = async (req, res) => {
       where: { status: status.toUpperCase() },
       limit: parseInt(limit),
       offset: offset,
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[sortBy, sortOrder.toUpperCase()], ['id', sortOrder.toUpperCase()]], // id breaks createdAt ties so pages never overlap
       distinct: true
     });
 
@@ -397,7 +397,7 @@ const searchAppointmentsByName = async (req, res) => {
       },
       limit: parseInt(limit),
       offset: offset,
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[sortBy, sortOrder.toUpperCase()], ['id', sortOrder.toUpperCase()]], // id breaks createdAt ties so pages never overlap
       distinct: true
     });
 

@@ -11,19 +11,13 @@
 // ============================================================================
 const express = require('express');
 const router = express.Router();
-const { isAuthenticated } = require('../middlewares/auth');
+const { isAuthenticated, isAdmin } = require('../middlewares/auth');
 const adminAuth = require('../middlewares/adminAuth');
 
 // ============================================================================
 // CONTROLLERS
 // ============================================================================
 const AuthController = require('../controllers/authController');
-
-/**
- * GET /api/users
- * Get all users with pagination and filtering (Admin only)
- */
-router.get('/', AuthController.getAllUsers);
 
 // ============================================================================
 // MIDDLEWARE SETUP
@@ -37,6 +31,12 @@ router.use(isAuthenticated);
 // USER LISTING ROUTES
 // ============================================================================
 // Routes for retrieving user information
+
+/**
+ * GET /api/users
+ * List users. Logged-in ADMIN or MAIN_MANAGER (the dashboard overview shows this table to both).
+ */
+router.get('/', isAdmin, AuthController.getAllUsers);
 
 
 

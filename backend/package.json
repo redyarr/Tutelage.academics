@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "test": "node scripts/test_search_utils.js && node scripts/test_compact_search_endpoint.js && node scripts/test_task_pdfs_model.js",
-    "test:utils": "node scripts/test_search_utils.js",
-    "test:search": "node scripts/test_compact_search_endpoint.js",
-    "test:taskpdfs": "node scripts/test_task_pdfs_model.js",
+    "test": "node --test \"tests/unit/**/*.test.js\"",
     "bench:search": "node scripts/search_benchmark.js english 30",
     "dev": "nodemon app.js",
-    "start": "node app.js"
+    "start": "node app.js",
+    "test:api": "node --test --test-concurrency=1 \"tests/api/**/*.test.js\"",
+    "test:db": "node --test --test-concurrency=1 \"tests/db/**/*.test.js\"",
+    "test:all": "npm test && npm run test:api && npm run test:db"
   },
   "author": "",
   "license": "ISC",

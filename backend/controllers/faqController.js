@@ -275,7 +275,7 @@ exports.getFaqsByCategory = async (req, res) => {
       where: {
         category: { [Op.iLike]: `%${category}%` }
       },
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[sortBy, sortOrder.toUpperCase()], ['id', sortOrder.toUpperCase()]], // id breaks createdAt ties so pages never overlap
       limit: parseInt(limit),
       offset: offset
     });
@@ -337,7 +337,7 @@ exports.searchFaqsByQuestion = async (req, res) => {
       where: {
         question: { [Op.iLike]: `%${query}%` }
       },
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[sortBy, sortOrder.toUpperCase()], ['id', sortOrder.toUpperCase()]], // id breaks createdAt ties so pages never overlap
       limit: parseInt(limit),
       offset: offset
     });

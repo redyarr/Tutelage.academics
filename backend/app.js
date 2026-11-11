@@ -67,33 +67,38 @@ const SERVER_PORT = process.env.PORT || 3001;
 // so routes that don’t require the DB (e.g., YouTube resolve) can be tested.
 const SHOULD_SKIP_DB = (
   String(process.env.SKIP_DB).toLowerCase() === 'true' ||
-  !(
+  !(process.env.DATABASE_URL || (
     process.env.DB_HOST &&
     process.env.DB_PORT &&
     process.env.DB_NAME &&
     process.env.DB_USER &&
     process.env.DB_PASSWORD
-  )
+  ))
 );
+// host/dbname only, never the credentials
+const DB_LABEL = process.env.DATABASE_URL
+  ? (({ host, pathname }) => host + pathname)(new URL(process.env.DATABASE_URL))
+  : `${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`;
 
 // ============================================================================
 // CORS CONFIGURATION
 // ============================================================================
 // Configure Cross-Origin Resource Sharing for frontend communication
 
+// FRONTEND_URL may list several origins, comma-separated (e.g. apex + www).
+// Outside production any http://localhost:<port> is also allowed (dev server, e2e prod build on :3100).
+const ALLOWED_ORIGINS = FRONTEND_URL.split(',').map((o) => o.trim().replace(/\/$/, ''));
+const isAllowedOrigin = (origin) =>
+  ALLOWED_ORIGINS.includes(origin) ||
+  (process.env.NODE_ENV !== 'production' && /^http:\/\/localhost:\d+$/.test(origin));
+
 app.use(cors({
-  origin: FRONTEND_URL,
+  // no Origin header = same-origin or server-to-server request
+  origin: (origin, callback) => callback(null, !origin || isAllowedOrigin(origin)),
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'X-Refresh-Token']
 }));
-
-// Additional CORS headers for complex requests
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', FRONTEND_URL);
-  res.header('Access-Control-Allow-Credentials', 'true');
-  next();
-});
 
 // ============================================================================
 // MIDDLEWARE CONFIGURATION
@@ -184,7 +189,7 @@ app.get('/', (req, res) => {
 app.get('/api/status', (req, res) => {
   res.json({
     status: 'healthy',
-    database: `${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`,
+    database: DB_LABEL,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     memory: process.memoryUsage(),
@@ -242,7 +247,7 @@ const initializeServer = async () => {
             console.log(`📡 Server running on: http://localhost:${SERVER_PORT}`);
             console.log(`🌐 Frontend URL: ${FRONTEND_URL}`);
             if (!SHOULD_SKIP_DB) {
-                console.log(`🗄️  Database: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
+                console.log(`🗄️  Database: ${DB_LABEL}`);
             } else {
                 console.log('🗄️  Database: SKIPPED (dev mode)');
             }
@@ -287,5 +292,9 @@ const initializeServer = async () => {
     }
 };
 
-// Start the server initialization process
-initializeServer();
+// Start the server only when run directly (`node app.js`); tests import the app instead.
+if (require.main === module) {
+  initializeServer();
+}
+
+module.exports = app;

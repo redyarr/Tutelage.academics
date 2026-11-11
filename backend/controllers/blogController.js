@@ -690,9 +690,10 @@ const getPaginatedBlogs = async (req, res) => {
     
     const { count, rows } = await Blog.findAndCountAll({
       where: whereClause,
+      include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[sortBy, sortOrder.toUpperCase()], ['id', sortOrder.toUpperCase()]], // id breaks createdAt ties so pages never overlap
       distinct: true
     });
     

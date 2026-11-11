@@ -192,7 +192,7 @@ exports.getPaginatedCourses = async (req, res) => {
       }],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[sortBy, sortOrder.toUpperCase()], ['id', sortOrder.toUpperCase()]], // id breaks createdAt ties so pages never overlap
       distinct: true
     });
 
@@ -399,7 +399,7 @@ exports.getCoursesByCategory = async (req, res) => {
         as: 'author',
         attributes: ['id', 'name', 'email']
       }],
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[sortBy, sortOrder.toUpperCase()], ['id', sortOrder.toUpperCase()]], // id breaks createdAt ties so pages never overlap
       limit: parseInt(limit),
       offset: offset,
       distinct: true
@@ -467,7 +467,7 @@ exports.searchCoursesByTitle = async (req, res) => {
         as: 'author',
         attributes: ['id', 'name', 'email']
       }],
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[sortBy, sortOrder.toUpperCase()], ['id', sortOrder.toUpperCase()]], // id breaks createdAt ties so pages never overlap
       limit: parseInt(limit),
       offset: offset,
       distinct: true
