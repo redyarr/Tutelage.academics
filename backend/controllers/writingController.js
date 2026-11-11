@@ -279,7 +279,7 @@ const getPaginatedWritings = async (req, res) => {
       ],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      order: [[sortBy, sortOrder.toUpperCase()]],
+      order: [[sortBy, sortOrder.toUpperCase()], ['id', sortOrder.toUpperCase()]], // id breaks createdAt ties so pages never overlap
       distinct: true
     });
 

@@ -11,6 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const { isAuthenticated } = require('../middlewares/auth');
+const adminAuth = require('../middlewares/adminAuth');
 
 // ============================================================================
 // CONTROLLERS
@@ -24,9 +25,10 @@ const AuthController = require('../controllers/authController');
 
 /**
  * POST /api/auth/register
- * Register a new user account
+ * Create a user account. ADMIN only: the body may set `role` (default ADMIN),
+ * so leaving this public let anyone mint an admin account.
  */
-router.post('/register', AuthController.register);
+router.post('/register', isAuthenticated, adminAuth, AuthController.register);
 
 /**
  * POST /api/auth/login

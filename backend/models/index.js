@@ -22,30 +22,32 @@ const environment = process.env.NODE_ENV || 'development';
 // ============================================================================
 // DATABASE CONNECTION
 // ============================================================================
-// Initialize Sequelize with PostgreSQL database connection (Neon.tech)
-const sequelizeConnection = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASSWORD,
-  {
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT),
-    dialect: 'postgres',
-    dialectOptions: {
-      ssl: {
-        require: true,
-        rejectUnauthorized: false
-      }
-    },
-    logging: false, // Disable SQL query logging
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
+// Initialize Sequelize with PostgreSQL database connection (Neon.tech).
+// DATABASE_URL wins; the discrete DB_* vars are the legacy fallback.
+const connectionOptions = {
+  dialect: 'postgres',
+  dialectOptions: {
+    ssl: {
+      require: true,
+      rejectUnauthorized: false
     }
+  },
+  logging: false, // Disable SQL query logging
+  pool: {
+    max: 5,
+    min: 0,
+    acquire: 30000,
+    idle: 10000
   }
-);
+};
+
+const sequelizeConnection = process.env.DATABASE_URL
+  ? new Sequelize(process.env.DATABASE_URL, connectionOptions)
+  : new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD, {
+      ...connectionOptions,
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT)
+    });
 
 // ============================================================================
 // MODEL REGISTRATION
