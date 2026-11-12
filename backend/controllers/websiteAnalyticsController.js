@@ -5,6 +5,20 @@
 
 const { analyticsDataClient, propertyId } = require('../config/googleAnalytics');
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const isIsoDate = (value) => ISO_DATE.test(value || '') && !Number.isNaN(Date.parse(value));
+
+/**
+ * GA date range for a request: an explicit ?from=YYYY-MM-DD&to=YYYY-MM-DD (the dashboard's custom
+ * range) wins; otherwise `startDate` (from ?days=) through today. Invalid from/to fall back silently.
+ */
+function rangeFrom(query, startDate) {
+  const { from, to } = query;
+  if (isIsoDate(from) && isIsoDate(to) && from <= to) return { startDate: from, endDate: to };
+  return { startDate, endDate: 'today' };
+}
+exports.rangeFrom = rangeFrom;
+
 /**
  * Get overall website statistics
  * - Total page views (all time)
@@ -76,7 +90,7 @@ exports.getWebsiteStats = async (req, res) => {
       // Total views for the selected period
       analyticsDataClient.runReport({
         property: `properties/${propertyId}`,
-        dateRanges: [{ startDate, endDate: 'today' }],
+        dateRanges: [rangeFrom(req.query, startDate)],
         metrics: [
           { name: 'screenPageViews' },
           { name: 'totalUsers' },
@@ -164,7 +178,7 @@ exports.getDailyStats = async (req, res) => {
 
     const [response] = await analyticsDataClient.runReport({
       property: `properties/${propertyId}`,
-      dateRanges: [{ startDate, endDate: 'today' }],
+      dateRanges: [rangeFrom(req.query, startDate)],
       dimensions: [{ name: 'date' }],
       metrics: [
         { name: 'screenPageViews' },
@@ -282,7 +296,7 @@ exports.getTopPages = async (req, res) => {
 
       [response] = await analyticsDataClient.runReport({
         property: `properties/${propertyId}`,
-        dateRanges: [{ startDate, endDate: 'today' }],
+        dateRanges: [rangeFrom(req.query, startDate)],
         dimensions: [{ name: 'pagePathPlusQueryString' }],
         metrics: [{ name: 'screenPageViews' }],
         orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
@@ -369,7 +383,7 @@ exports.getDeviceStats = async (req, res) => {
 
       [response] = await analyticsDataClient.runReport({
         property: `properties/${propertyId}`,
-        dateRanges: [{ startDate, endDate: 'today' }],
+        dateRanges: [rangeFrom(req.query, startDate)],
         dimensions: [{ name: 'deviceCategory' }],
         metrics: [{ name: 'activeUsers' }]
       });
@@ -436,7 +450,7 @@ exports.getCountryStats = async (req, res) => {
 
       [response] = await analyticsDataClient.runReport({
         property: `properties/${propertyId}`,
-        dateRanges: [{ startDate, endDate: 'today' }],
+        dateRanges: [rangeFrom(req.query, startDate)],
         dimensions: [{ name: 'country' }],
         metrics: [{ name: 'activeUsers' }],
         orderBys: [{ metric: { metricName: 'activeUsers' }, desc: true }],

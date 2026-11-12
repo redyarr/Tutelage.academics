@@ -5,6 +5,7 @@
 
 const { QuizConfiguration, QuizSection, QuizQuestion } = require('../models');
 const { sendTestResultEmail } = require('../config/email');
+const { levelPlan } = require('../utils/quizLevels');
 
 /**
  * GET /api/quiz/config
@@ -60,7 +61,7 @@ exports.getPublicQuestions = async (req, res) => {
     const sections = await QuizSection.findAll({
       where: { isActive: true },
       order: [['displayOrder', 'ASC']],
-      attributes: ['id', 'name', 'slug', 'questionCount']
+      attributes: ['id', 'name', 'slug', 'questionCount', 'levelDistribution']
     });
 
     if (!sections.length) {
@@ -78,17 +79,20 @@ exports.getPublicQuestions = async (req, res) => {
       const limit = section.questionCount || 0;
       if (limit === 0) continue;
 
-      const questions = await QuizQuestion.findAll({
-        where: {
-          sectionId: section.id,
-          isActive: true
-        },
-        attributes: ['id', 'sectionId', 'level', 'text', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer'],
-        order: [
-          [QuizQuestion.sequelize.fn('RANDOM')]
-        ],
-        limit: limit
-      });
+      const pick = (where, n) =>
+        QuizQuestion.findAll({
+          where: { sectionId: section.id, isActive: true, ...where },
+          attributes: ['id', 'sectionId', 'level', 'text', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer'],
+          order: [[QuizQuestion.sequelize.fn('RANDOM')]],
+          limit: n
+        });
+
+      // A section with a level split gets exactly that many random questions per level, easy → hard;
+      // without one it takes `questionCount` random questions of any level.
+      const plan = levelPlan(section.levelDistribution);
+      const questions = plan.length
+        ? (await Promise.all(plan.map(([level, n]) => pick({ level }, n)))).flat()
+        : await pick({}, limit);
 
       // Log warning if not enough questions
       if (questions.length < limit) {
