@@ -39,6 +39,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: 10,
       comment: 'Number of questions this section should contain (admin-controlled)'
     },
+    levelDistribution: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      defaultValue: null,
+      comment: 'Questions per CEFR level, e.g. {"A1":3,"A2":3,"B1":4}; must sum to questionCount. Null = any level'
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true,

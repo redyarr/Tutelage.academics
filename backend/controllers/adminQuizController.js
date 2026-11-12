@@ -5,6 +5,25 @@
 
 const { QuizConfiguration, QuizSection, QuizQuestion, User } = require('../models');
 const { Op } = require('sequelize');
+const { LEVELS, normalizeDistribution, distributionError } = require('../utils/quizLevels');
+
+/** { A1: n, ..., C2: n } active questions per level — the admin form warns when a split asks for more. */
+const countByLevel = (questions = []) =>
+  Object.fromEntries(LEVELS.map((level) => [level, questions.filter((q) => q.level === level).length]));
+
+// The slug (unique) is derived from the name, so a clash means the name is taken.
+const DUPLICATE_SECTION = 'A section with this name already exists.';
+
+/** Parses and checks a section's level split against its question count; returns { dist } or { error }. */
+function readDistribution(body, questionCount) {
+  try {
+    const dist = normalizeDistribution(body.levelDistribution);
+    const error = distributionError(dist, questionCount);
+    return error ? { error } : { dist };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
 
 // ============================================================================
 // QUIZ CONFIGURATION
@@ -85,15 +104,19 @@ exports.getAllSections = async (req, res) => {
     const sections = await QuizSection.findAll({
       include: [
         { model: User, as: 'creator', attributes: ['id', 'name', 'email'] },
-        { model: QuizQuestion, as: 'questions', attributes: ['id'], where: { isActive: true }, required: false }
+        { model: QuizQuestion, as: 'questions', attributes: ['id', 'level'], where: { isActive: true }, required: false }
       ],
       order: [['displayOrder', 'ASC']]
     });
 
-    const enriched = sections.map(s => ({
-      ...s.toJSON(),
-      currentQuestionCount: s.questions ? s.questions.length : 0
-    }));
+    const enriched = sections.map(s => {
+      const { questions, ...section } = s.toJSON();
+      return {
+        ...section,
+        currentQuestionCount: questions ? questions.length : 0,
+        availableByLevel: countByLevel(questions)
+      };
+    });
 
     res.status(200).json({ success: true, data: enriched });
   } catch (error) {
@@ -120,7 +143,7 @@ exports.getSectionById = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Section not found' });
     }
 
-    res.status(200).json({ success: true, data: section });
+    res.status(200).json({ success: true, data: { ...section.toJSON(), availableByLevel: countByLevel(section.questions) } });
   } catch (error) {
     console.error('Error fetching section:', error);
     res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
@@ -153,12 +176,16 @@ exports.createSection = async (req, res) => {
       });
     }
 
+    const { dist, error: distError } = readDistribution(req.body, newCount);
+    if (distError) return res.status(400).json({ success: false, message: distError });
+
     const section = await QuizSection.create({
       name,
       slug,
       description,
       displayOrder: displayOrder || 0,
       questionCount: newCount,
+      levelDistribution: dist,
       createdBy
     });
 
@@ -168,6 +195,7 @@ exports.createSection = async (req, res) => {
 
     res.status(201).json({ success: true, message: 'Section created', data: sectionWithCreator });
   } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') return res.status(400).json({ success: false, message: DUPLICATE_SECTION });
     console.error('Error creating section:', error);
     res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
   }
@@ -211,7 +239,18 @@ exports.updateSection = async (req, res) => {
       // }
     }
 
-    await section.update({ name, slug, description, displayOrder, questionCount, isActive });
+    // A split must match the (possibly new) count; omitting levelDistribution leaves it unchanged.
+    const patch = { name, slug, description, displayOrder, questionCount, isActive };
+    if (req.body.levelDistribution !== undefined) {
+      const { dist, error: distError } = readDistribution(req.body, questionCount ?? section.questionCount);
+      if (distError) return res.status(400).json({ success: false, message: distError });
+      patch.levelDistribution = dist;
+    } else if (questionCount !== undefined) {
+      const distError = distributionError(section.levelDistribution, questionCount);
+      if (distError) return res.status(400).json({ success: false, message: distError });
+    }
+
+    await section.update(patch);
 
     const updated = await QuizSection.findByPk(id, {
       include: [{ model: User, as: 'creator', attributes: ['id', 'name', 'email'] }]
@@ -219,6 +258,7 @@ exports.updateSection = async (req, res) => {
 
     res.status(200).json({ success: true, message: 'Section updated', data: updated });
   } catch (error) {
+    if (error.name === 'SequelizeUniqueConstraintError') return res.status(400).json({ success: false, message: DUPLICATE_SECTION });
     console.error('Error updating section:', error);
     res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
   }
@@ -278,7 +318,7 @@ exports.getAllQuestions = async (req, res) => {
       ],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      order: [['sectionId', 'ASC'], ['displayOrder', 'ASC'], ['id', 'ASC']]
+      order: [['sectionId', 'ASC'], ['level', 'ASC'], ['id', 'ASC']]
     });
 
     const totalPages = Math.ceil(count / limit);
