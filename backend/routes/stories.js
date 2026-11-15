@@ -4,6 +4,7 @@
 // Public GET endpoints and admin-protected POST/PUT/DELETE for story library.
 
 const express = require('express');
+const { validateTags } = require('../middlewares/validateTags');
 const router = express.Router();
 const {
   createStory,
@@ -23,8 +24,8 @@ router.get('/:id', getStoryById);
 
 // Protected admin routes
 router.use(isAuthenticated);
-router.post('/', isAdmin, pdfUpload, createStory);
-router.put('/:id', isAdmin, pdfUpload, updateStory);
+router.post('/', isAdmin, pdfUpload, validateTags, createStory);
+router.put('/:id', isAdmin, pdfUpload, validateTags, updateStory);
 router.delete('/:id', isAdmin, deleteStory);
 
 module.exports = router;

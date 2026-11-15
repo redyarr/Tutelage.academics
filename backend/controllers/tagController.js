@@ -10,7 +10,7 @@ exports.getAllTags = async (req, res) => {
   try {
     const { search, namespace } = req.query;
     const where = {};
-    if (search) where.name = { [Op.like]: `%${search}%` };
+    if (search) where.name = { [Op.iLike]: `%${search}%` }; // tags match ignoring case everywhere
     if (namespace) where.namespace = namespace;
     const tags = await Tag.findAll({ where, order: [['name', 'ASC']] });
     res.status(200).json({ success: true, data: tags });

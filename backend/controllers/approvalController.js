@@ -8,19 +8,10 @@
 
 const { ApprovalRequest, Blog, Video, Audio, Reading, Writing, Speaking, Story, EslAudio, EslVideo, Tag, ResourceTag, User, LandingSection } = require('../models');
 const { Op } = require('sequelize');
+const { TAG_TYPES, setResourceTags, getResourceTags } = require('../utils/resourceTags');
 
-// Map ApprovalRequest.resourceType to ResourceTag.resourceType (lowercase)
-const joinTypeMap = {
-  Blog: 'reading',    // Blog tags currently stored under 'reading' namespace
-  Reading: 'reading',
-  Writing: 'writing',
-  Video: 'video',
-  Audio: 'audio',
-  Speaking: 'speaking',
-  Story: 'story',
-  EslVideo: 'video',
-  EslAudio: 'audio'
-};
+// ApprovalRequest.resourceType ('Blog', 'EslAudio', ...) -> that table's own key in resource_tags
+const joinTypeMap = TAG_TYPES;
 
 // Choose model by resourceType
 function getModelByType(type) {
@@ -41,35 +32,15 @@ function getModelByType(type) {
 
 // Fetch tags for a resource
 async function getTagsForResource(resourceType, resourceId) {
-  const ns = joinTypeMap[resourceType];
-  if (!ns) return [];
-  
-  const rts = await ResourceTag.findAll({ where: { resourceType: ns, resourceId } });
-  if (!rts.length) return [];
-  
-  const tagIds = rts.map(rt => rt.tagId);
-  const tags = await Tag.findAll({ where: { id: { [Op.in]: tagIds } } });
-  return tags.map(t => t.name).sort();
+  const type = TAG_TYPES[resourceType];
+  return type ? (await getResourceTags(type, resourceId)).sort() : [];
 }
 
 // Create missing tags by name under appropriate namespace and then
 // replace ResourceTag mappings for the resource.
 async function applyTags(resourceType, resourceId, tagNames) {
-  if (!Array.isArray(tagNames) || !tagNames.length) return;
-  const ns = joinTypeMap[resourceType];
-  const trimmed = tagNames.map(t => String(t).trim()).filter(Boolean);
-  const existing = await Tag.findAll({ where: { name: { [Op.in]: trimmed } } });
-  const map = new Map(existing.map(t => [t.name, t.id]));
-  const toCreate = trimmed.filter(n => !map.has(n)).map(name => ({ name, namespace: ns }));
-  if (toCreate.length) {
-    const created = await Tag.bulkCreate(toCreate, { returning: true });
-    created.forEach(t => map.set(t.name, t.id));
-  }
-  const tagIds = trimmed.map(n => map.get(n)).filter(Boolean);
-  await ResourceTag.destroy({ where: { resourceType: ns, resourceId } });
-  if (tagIds.length) {
-    await ResourceTag.bulkCreate(tagIds.map(tagId => ({ resourceType: ns, resourceId, tagId })));
-  }
+  const type = TAG_TYPES[resourceType];
+  if (type) await setResourceTags(type, resourceId, tagNames); // an empty list clears them
 }
 
 // Filter payload to known fields per model
@@ -289,7 +260,7 @@ exports.approve = async (req, res) => {
       // Clean up tags (only for resources that use tags) and delete resource
       const ns = joinTypeMap[approval.resourceType];
       if (ns) {
-        await ResourceTag.destroy({ where: { resourceType: ns, resourceId: approval.resourceId } });
+        await setResourceTags(ns, approval.resourceId, []);
       }
       const row = await Model.findByPk(approval.resourceId);
       if (row) await row.destroy();

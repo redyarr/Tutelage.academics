@@ -5,6 +5,7 @@
 // ============================================================================
 
 const express = require('express');
+const { validateTags } = require('../middlewares/validateTags');
 const router = express.Router();
 const {
   createReading,
@@ -55,13 +56,13 @@ router.get('/:id', getReadingById);
  * POST /api/readings
  * Create a new reading item
  */
-router.post('/', isAuthenticated, pdfUpload, createReading);
+router.post('/', isAuthenticated, pdfUpload, validateTags, createReading);
 
 /**
  * PUT /api/readings/:id
  * Update reading item (author/admin)
  */
-router.put('/:id', isAuthenticated, pdfUpload, updateReading);
+router.put('/:id', isAuthenticated, pdfUpload, validateTags, updateReading);
 
 /**
  * DELETE /api/readings/:id
@@ -77,13 +78,13 @@ router.delete('/:id', isAuthenticated, deleteReading);
  * POST /api/readings/admin
  * Admin-only creation
  */
-router.post('/admin', isAuthenticated, adminAuth, pdfUpload, createReading);
+router.post('/admin', isAuthenticated, adminAuth, pdfUpload, validateTags, createReading);
 
 /**
  * PUT /api/readings/admin/:id
  * Admin-only update
  */
-router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, updateReading);
+router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, validateTags, updateReading);
 
 /**
  * DELETE /api/readings/admin/:id

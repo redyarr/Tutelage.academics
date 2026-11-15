@@ -6,6 +6,11 @@
 // ============================================================================
 
 const { Blog, User, Tag, ResourceTag, ApprovalRequest, TaskPdf } = require('../models');
+const { TAG_TYPES, setResourceTags, getResourceTags, resourceIdsWithTags } = require('../utils/resourceTags');
+const TAG_TYPE = TAG_TYPES.Blog; // own key in resource_tags (see utils/resourceTags.js)
+const attachTags = (resourceId, tagNames) => setResourceTags(TAG_TYPE, resourceId, tagNames);
+const includeTagsFor = (resourceId) => getResourceTags(TAG_TYPE, resourceId);
+const getTagFilterIds = (query) => resourceIdsWithTags(TAG_TYPE, query);
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -31,39 +36,8 @@ function normalizeLevels(input) {
   return unique.length ? unique : null;
 }
 
-// Helper functions for tags - change 'blog' to 'reading' to match existing enum
-async function attachTags(resourceId, tagNames = []) {
-  if (!tagNames?.length) return;
-  const existing = await Tag.findAll({ where: { name: { [Op.in]: tagNames } } });
-  const existingNames = new Set(existing.map(t => t.name));
-  const toCreate = tagNames.filter(n => !existingNames.has(n)).map(name => ({ name, namespace: 'reading' }));
-  if (toCreate.length) await Tag.bulkCreate(toCreate);
-  const allTags = await Tag.findAll({ where: { name: { [Op.in]: tagNames } } });
-  const mappings = allTags.map(tag => ({ resourceType: 'reading', resourceId, tagId: tag.id }));
-  for (const m of mappings) {
-    const exists = await ResourceTag.findOne({ where: m });
-    if (!exists) await ResourceTag.create(m);
-  }
-}
 
-async function includeTagsFor(resourceId) {
-  const rts = await ResourceTag.findAll({ where: { resourceType: 'reading', resourceId } });
-  if (!rts.length) return [];
-  const tagIds = rts.map(rt => rt.tagId);
-  const tags = await Tag.findAll({ where: { id: { [Op.in]: tagIds } } });
-  return tags.map(t => t.name);
-}
 
-async function getTagFilterIds(tagQuery) {
-  if (!tagQuery) return null;
-  const names = Array.isArray(tagQuery) ? tagQuery : String(tagQuery).split(',').map(s => s.trim()).filter(Boolean);
-  if (!names.length) return null;
-  const tags = await Tag.findAll({ where: { name: { [Op.in]: names } } });
-  if (!tags.length) return [];
-  const tagIds = tags.map(t => t.id);
-  const mappings = await ResourceTag.findAll({ where: { resourceType: 'reading', tagId: { [Op.in]: tagIds } } });
-  return [...new Set(mappings.map(m => m.resourceId))];
-}
 
 /**
  * Create a new blog post
@@ -506,7 +480,7 @@ const updateBlog = async (req, res) => {
     // Update tags
     if (tags !== undefined) {
       const tagNames = Array.isArray(tags) ? tags : String(tags).split(',').map(t => t.trim()).filter(Boolean);
-      await ResourceTag.destroy({ where: { resourceType: 'reading', resourceId: blog.id } });
+      await setResourceTags(TAG_TYPE, blog.id, []);
       if (tagNames.length) await attachTags(blog.id, tagNames);
     }
 

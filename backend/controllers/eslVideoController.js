@@ -4,6 +4,11 @@
 // CRUD, search, filter, sort, tag assignment, and analytics for ESL videos.
 
 const { EslVideo, Tag, ResourceTag, ResourceAnalytics, ApprovalRequest, TaskPdf } = require('../models');
+const { TAG_TYPES, setResourceTags, getResourceTags, resourceIdsWithTags } = require('../utils/resourceTags');
+const TAG_TYPE = TAG_TYPES.EslVideo; // own key in resource_tags (see utils/resourceTags.js)
+const attachTags = (resourceId, tagNames) => setResourceTags(TAG_TYPE, resourceId, tagNames);
+const includeTagsFor = (resourceId) => getResourceTags(TAG_TYPE, resourceId);
+const getTagFilterIds = (query) => resourceIdsWithTags(TAG_TYPE, query);
 const { Op } = require('sequelize');
 const { sendApprovalRequestNotification } = require('../config/email');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -41,29 +46,7 @@ const getYouTubeThumbnail = (url) => {
 const DB_RESOURCE_TYPE = 'video'; // maps ESL videos to the generic 'video' enum in the DB
 const RESOURCE_KEY = 'esl_video'; // logical name used within this controller (optional)
 
-const attachTags = async (resourceId, tagNames = []) => {
-  if (!Array.isArray(tagNames) || !tagNames.length) return;
-  const trimmed = tagNames.map(t => String(t).trim()).filter(Boolean);
-  const existing = await Tag.findAll({ where: { name: { [Op.in]: trimmed } } });
-  const existingMap = new Map(existing.map(t => [t.name, t.id]));
-  const toCreate = trimmed.filter(n => !existingMap.has(n)).map(n => ({ name: n }));  
-  if (toCreate.length) {
-    const created = await Tag.bulkCreate(toCreate, { returning: true });
-    created.forEach(t => existingMap.set(t.name, t.id));
-  }
-  const tagIds = trimmed.map(n => existingMap.get(n)).filter(Boolean);
-  await ResourceTag.destroy({ where: { resourceType: DB_RESOURCE_TYPE, resourceId } });
-  await ResourceTag.bulkCreate(tagIds.map(tagId => ({ resourceType: DB_RESOURCE_TYPE, resourceId, tagId })));
-};
 
-const includeTagsFor = async (resourceId) => {
-  // use DB_RESOURCE_TYPE (enum-compliant)
-  const rts = await ResourceTag.findAll({ where: { resourceType: DB_RESOURCE_TYPE, resourceId } });
-  if (!rts.length) return [];
-  const tagIds = rts.map(rt => rt.tagId);
-  const tags = await Tag.findAll({ where: { id: { [Op.in]: tagIds } } });
-  return tags.map(t => t.name);
-};
 
 const bumpAnalytics = async (resourceId, field = 'views', amount = 1) => {
   const [row, created] = await ResourceAnalytics.findOrCreate({
@@ -195,16 +178,8 @@ exports.getAllEslVideos = async (req, res) => {
 
     // Tag filtering
     let idFilter = null;
-    if (tags) {
-      const tagNames = String(tags).split(',').map(t => t.trim()).filter(Boolean);
-      const tagRows = await Tag.findAll({ where: { name: { [Op.in]: tagNames } } });
-      const tagIds = tagRows.map(t => t.id);
-      if (tagIds.length) {
-        const rtRows = await ResourceTag.findAll({ where: { resourceType: DB_RESOURCE_TYPE, tagId: { [Op.in]: tagIds } } });
-        const matchedIds = [...new Set(rtRows.map(r => r.resourceId))];
-        idFilter = matchedIds.length ? matchedIds : [-1];
-      }
-    }
+    const matchedIds = await getTagFilterIds(tags);
+    if (matchedIds) idFilter = matchedIds.length ? matchedIds : [-1];
     if (Array.isArray(idFilter)) where.id = { [Op.in]: idFilter };
 
     // PAGE-BASED PAGINATION
@@ -426,7 +401,7 @@ exports.updateEslVideo = async (req, res) => {
     }
     
     if (tagNames !== null) {
-      await ResourceTag.destroy({ where: { resourceType: DB_RESOURCE_TYPE, resourceId: id } });
+      await setResourceTags(TAG_TYPE, id, []);
       if (tagNames.length) await attachTags(video.id, tagNames);
     }
     
@@ -472,7 +447,7 @@ exports.deleteEslVideo = async (req, res) => {
       });
     }
     // use DB_RESOURCE_TYPE for cleanup
-    await ResourceTag.destroy({ where: { resourceType: DB_RESOURCE_TYPE, resourceId: id } });
+    await setResourceTags(TAG_TYPE, id, []);
     await ResourceAnalytics.destroy({ where: { resourceType: DB_RESOURCE_TYPE, resourceId: id } });
     await video.destroy();
     res.status(200).json({ success: true, message: 'Esl Video deleted Successfully' });
