@@ -16,6 +16,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       comment: 'Foreign key to QuizSection (each question belongs to exactly one section)'
     },
+    passageId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      comment: 'Optional QuizPassage this question belongs to (same section); displayOrder is its place in the passage'
+    },
     level: {
       type: DataTypes.ENUM('A1', 'A2', 'B1', 'B2', 'C1', 'C2'),
       allowNull: false,
@@ -74,6 +79,7 @@ module.exports = (sequelize, DataTypes) => {
 
   QuizQuestion.associate = (models) => {
     QuizQuestion.belongsTo(models.QuizSection, { foreignKey: 'sectionId', as: 'section' });
+    QuizQuestion.belongsTo(models.QuizPassage, { foreignKey: 'passageId', as: 'passage' });
     QuizQuestion.belongsTo(models.User, { foreignKey: 'createdBy', as: 'creator' });
   };
 

@@ -36,4 +36,62 @@ function distributionError(dist, questionCount) {
 /** [[level, count], ...] in difficulty order (A1 first), skipping zeros — the order questions are served in. */
 const levelPlan = (dist) => LEVELS.filter((l) => dist?.[l] > 0).map((l) => [l, dist[l]]);
 
-module.exports = { LEVELS, normalizeDistribution, distributionTotal, distributionError, levelPlan };
+const shuffled = (list, random) => {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+};
+
+/**
+ * Lays out one section of the quiz as `questionCount` numbered places.
+ * Each passage ({ id, startPosition, endPosition }) puts its questions, by displayOrder, on its own
+ * numbers; every other number gets a random standalone question (passageId null). With a level
+ * split, passage questions count toward their own levels and the random ones make up the rest,
+ * easy → hard. Pass active passages and questions only. Returns the questions in quiz order;
+ * shorter than questionCount when the bank runs out (the caller warns).
+ */
+function arrangeSection({ questionCount, levelDistribution, passages = [], questions }, random = Math.random) {
+  const places = Array(questionCount).fill(null);
+  const byOrder = (a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.id - b.id;
+  for (const p of passages) {
+    if (p.startPosition < 1 || p.endPosition > questionCount) continue; // the admin API prevents this
+    questions
+      .filter((q) => q.passageId === p.id)
+      .sort(byOrder)
+      .slice(0, p.endPosition - p.startPosition + 1)
+      .forEach((q, i) => { places[p.startPosition - 1 + i] = q; });
+  }
+
+  const placed = places.filter(Boolean);
+  const free = questionCount - placed.length;
+  const pool = shuffled(questions.filter((q) => !q.passageId), random);
+  const plan = levelPlan(levelDistribution);
+  const randoms = (plan.length
+    ? plan.flatMap(([level, n]) => {
+        const need = n - placed.filter((q) => q.level === level).length;
+        return need > 0 ? pool.filter((q) => q.level === level).slice(0, need) : [];
+      })
+    : pool
+  ).slice(0, free);
+
+  let next = 0;
+  return places.map((q) => q ?? randoms[next++]).filter(Boolean);
+}
+
+/**
+ * Error message for a passage covering questions start-end of a section with `questionCount`
+ * questions, next to the section's `others` passages ({ title, startPosition, endPosition }); else null.
+ */
+function passageRangeError(start, end, questionCount, others = []) {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+    return 'Choose a range like "from question 1 to 4".';
+  }
+  if (end > questionCount) return `This section has only ${questionCount} questions.`;
+  const clash = others.find((o) => start <= o.endPosition && o.startPosition <= end);
+  return clash ? `Questions ${clash.startPosition}-${clash.endPosition} already belong to "${clash.title}".` : null;
+}
+
+module.exports = { LEVELS, normalizeDistribution, distributionTotal, distributionError, levelPlan, arrangeSection, passageRangeError };

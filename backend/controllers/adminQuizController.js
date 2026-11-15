@@ -3,9 +3,9 @@
 // ============================================================================
 // Handles admin CRUD operations for quiz config, sections, and questions
 
-const { QuizConfiguration, QuizSection, QuizQuestion, User } = require('../models');
+const { sequelize, QuizConfiguration, QuizSection, QuizQuestion, QuizPassage, User } = require('../models');
 const { Op } = require('sequelize');
-const { LEVELS, normalizeDistribution, distributionError } = require('../utils/quizLevels');
+const { LEVELS, normalizeDistribution, distributionError, passageRangeError } = require('../utils/quizLevels');
 
 /** { A1: n, ..., C2: n } active questions per level — the admin form warns when a split asks for more. */
 const countByLevel = (questions = []) =>
@@ -239,6 +239,17 @@ exports.updateSection = async (req, res) => {
       // }
     }
 
+    // A smaller section must still hold every passage's numbers.
+    if (questionCount !== undefined) {
+      const lastPassage = await QuizPassage.findOne({ where: { sectionId: id, endPosition: { [Op.gt]: questionCount } }, order: [['endPosition', 'DESC']] });
+      if (lastPassage) {
+        return res.status(400).json({
+          success: false,
+          message: `The passage "${lastPassage.title}" uses questions ${lastPassage.startPosition}-${lastPassage.endPosition}. Keep at least ${lastPassage.endPosition} questions, or change the passage's questions first.`
+        });
+      }
+    }
+
     // A split must match the (possibly new) count; omitting levelDistribution leaves it unchanged.
     const patch = { name, slug, description, displayOrder, questionCount, isActive };
     if (req.body.levelDistribution !== undefined) {
@@ -285,6 +296,14 @@ exports.deleteSection = async (req, res) => {
       });
     }
 
+    const passageCount = await QuizPassage.count({ where: { sectionId: id } });
+    if (passageCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete section "${section.name}". It has ${passageCount} passage(s). Please delete them first.`
+      });
+    }
+
     await section.destroy();
     res.status(200).json({ success: true, message: 'Section deleted' });
   } catch (error) {
@@ -303,17 +322,24 @@ exports.deleteSection = async (req, res) => {
  */
 exports.getAllQuestions = async (req, res) => {
   try {
-    const { sectionId, level, page = 1, limit = 50 } = req.query;
+    const { sectionId, level, search, freeFor, page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
 
     const where = {};
     if (sectionId) where.sectionId = sectionId;
     if (level) where.level = level;
+    // ?search= matches the question text (the passage editor's bank picker)
+    if (search && String(search).trim()) where.text = { [Op.iLike]: `%${String(search).trim()}%` };
+    // ?freeFor=<passageId|new>: only questions in no passage, or already in that passage
+    if (freeFor) {
+      where.passageId = freeFor === 'new' ? null : { [Op.or]: [null, Number(freeFor) || 0] };
+    }
 
     const { count, rows } = await QuizQuestion.findAndCountAll({
       where,
       include: [
         { model: QuizSection, as: 'section', attributes: ['id', 'name', 'slug'] },
+        { model: QuizPassage, as: 'passage', attributes: ['id', 'title'] },
         { model: User, as: 'creator', attributes: ['id', 'name', 'email'] }
       ],
       limit: parseInt(limit),
@@ -351,6 +377,7 @@ exports.getQuestionById = async (req, res) => {
     const question = await QuizQuestion.findByPk(id, {
       include: [
         { model: QuizSection, as: 'section', attributes: ['id', 'name', 'slug'] },
+        { model: QuizPassage, as: 'passage', attributes: ['id', 'title'] },
         { model: User, as: 'creator', attributes: ['id', 'name', 'email'] }
       ]
     });
@@ -397,6 +424,7 @@ exports.createQuestion = async (req, res) => {
     // how many questions to randomly sample for the quiz.
     // Admins can add unlimited questions to any section.
 
+    // Passage questions are created through the passage endpoints, so they land on its numbers.
     const question = await QuizQuestion.create({
       sectionId,
       level,
@@ -444,11 +472,21 @@ exports.updateQuestion = async (req, res) => {
       }
     }
 
-    await question.update({ sectionId, level, text, optionA, optionB, optionC, optionD, correctAnswer, displayOrder, isActive });
+    // A passage question moves only with its passage (its number belongs to the passage's section)
+    if (question.passageId && sectionId !== undefined && Number(sectionId) !== question.sectionId) {
+      return res.status(400).json({ success: false, message: 'This question belongs to a reading passage. Move the passage instead, or remove the question from it first.' });
+    }
+
+    await question.update({
+      sectionId, level, text, optionA, optionB, optionC, optionD, correctAnswer, isActive,
+      // displayOrder is the question's place inside its passage; only the passage editor sets it
+      ...(question.passageId ? {} : { displayOrder })
+    });
 
     const updated = await QuizQuestion.findByPk(id, {
       include: [
         { model: QuizSection, as: 'section', attributes: ['id', 'name', 'slug'] },
+        { model: QuizPassage, as: 'passage', attributes: ['id', 'title'] },
         { model: User, as: 'creator', attributes: ['id', 'name', 'email'] }
       ]
     });
@@ -477,6 +515,190 @@ exports.deleteQuestion = async (req, res) => {
     res.status(200).json({ success: true, message: 'Question deleted' });
   } catch (error) {
     console.error('Error deleting question:', error);
+    res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+  }
+};
+
+// ============================================================================
+// PASSAGES
+// ============================================================================
+// A reading text covering a range of a section's question numbers (e.g. questions 1-4). It is
+// saved together with exactly one question per number: new ones are created, picked bank
+// questions are moved into it, and questions taken out are switched off (they were written
+// for the text) but kept in the question list.
+
+const QUESTION_FIELDS = ['level', 'text', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer'];
+
+/** Error message for one passage question, or null. */
+function passageQuestionError(q) {
+  if (!q || typeof q !== 'object') return 'is missing';
+  if (!LEVELS.includes(q.level)) return 'needs a level';
+  if (!String(q.text ?? '').trim()) return 'needs the question text';
+  if (String(q.text).length > 1000) return 'text is longer than 1000 characters';
+  for (const letter of ['A', 'B', 'C', 'D']) {
+    const value = String(q[`option${letter}`] ?? '');
+    if (!value.trim()) return `needs option ${letter}`;
+    if (value.length > 500) return `option ${letter} is longer than 500 characters`;
+  }
+  const answer = Number(q.correctAnswer);
+  if (!Number.isInteger(answer) || answer < 0 || answer > 3) return 'needs the correct answer';
+  return null;
+}
+
+/** The passage with its questions in quiz order (the shape the editor loads). */
+const loadPassage = (id) =>
+  QuizPassage.findByPk(id, {
+    include: [
+      { model: QuizSection, as: 'section', attributes: ['id', 'name', 'questionCount'] },
+      { model: QuizQuestion, as: 'questions', attributes: ['id', 'displayOrder', 'isActive', ...QUESTION_FIELDS] }
+    ],
+    order: [[{ model: QuizQuestion, as: 'questions' }, 'displayOrder', 'ASC'], [{ model: QuizQuestion, as: 'questions' }, 'id', 'ASC']]
+  });
+
+/** Validates and saves a passage (new when `passage` is null) with its questions; sends the response. */
+async function savePassage(req, res, passage) {
+  const { sectionId, title, text, isActive } = req.body;
+  const start = Number(req.body.startPosition);
+  const end = Number(req.body.endPosition);
+  const items = Array.isArray(req.body.questions) ? req.body.questions : [];
+  const fail = (message, status = 400) => res.status(status).json({ success: false, message });
+
+  if (!String(title ?? '').trim() || String(title).length > 200) return fail('Give the passage a title (up to 200 characters).');
+  if (!String(text ?? '').trim()) return fail('Write the passage text.');
+  const section = await QuizSection.findByPk(sectionId);
+  if (!section) return fail('Section not found', 404);
+
+  const others = await QuizPassage.findAll({
+    where: { sectionId: section.id, ...(passage && { id: { [Op.ne]: passage.id } }) },
+    attributes: ['title', 'startPosition', 'endPosition']
+  });
+  const rangeError = passageRangeError(start, end, section.questionCount, others);
+  if (rangeError) return fail(rangeError);
+  if (items.length !== end - start + 1) {
+    return fail(`Questions ${start}-${end} need ${end - start + 1} questions; ${items.length} were sent.`);
+  }
+  for (const [i, q] of items.entries()) {
+    const error = passageQuestionError(q);
+    if (error) return fail(`Question ${start + i} ${error}.`);
+  }
+
+  // Picked bank questions must sit in this section and not in another passage.
+  const ids = items.filter((q) => q.id).map((q) => Number(q.id));
+  if (new Set(ids).size !== ids.length) return fail('The same question is used twice.');
+  const picked = ids.length ? await QuizQuestion.findAll({ where: { id: ids } }) : [];
+  if (picked.length !== ids.length) return fail('A picked question no longer exists. Pick it again.');
+  const taken = picked.find((q) => q.sectionId !== section.id || (q.passageId && q.passageId !== passage?.id));
+  if (taken) return fail(`Question #${taken.id} is in another section or passage.`);
+
+  const saved = await sequelize.transaction(async (transaction) => {
+    const fields = { sectionId: section.id, title: String(title).trim(), text, startPosition: start, endPosition: end, isActive: isActive ?? true };
+    const row = passage
+      ? await passage.update(fields, { transaction })
+      : await QuizPassage.create({ ...fields, createdBy: req.user.id }, { transaction });
+
+    const keep = [];
+    for (const [i, q] of items.entries()) {
+      const values = {
+        sectionId: section.id,
+        passageId: row.id,
+        displayOrder: i + 1,
+        isActive: true, // a switched-off question would leave a hole in the passage's numbers
+        level: q.level,
+        text: String(q.text).trim(),
+        optionA: String(q.optionA).trim(),
+        optionB: String(q.optionB).trim(),
+        optionC: String(q.optionC).trim(),
+        optionD: String(q.optionD).trim(),
+        correctAnswer: Number(q.correctAnswer)
+      };
+      if (q.id) {
+        await QuizQuestion.update(values, { where: { id: q.id }, transaction });
+        keep.push(Number(q.id));
+      } else {
+        keep.push((await QuizQuestion.create({ ...values, createdBy: req.user.id }, { transaction })).id);
+      }
+    }
+    // keep is never empty: a range holds at least one question
+    await QuizQuestion.update(
+      { passageId: null, isActive: false },
+      { where: { passageId: row.id, id: { [Op.notIn]: keep } }, transaction }
+    );
+    return row;
+  });
+
+  res.status(passage ? 200 : 201).json({ success: true, message: passage ? 'Passage saved' : 'Passage created', data: await loadPassage(saved.id) });
+}
+
+/**
+ * GET /api/admin/quiz/passages?sectionId=
+ * Passages (without their text) with their range and how many questions they hold
+ */
+exports.getAllPassages = async (req, res) => {
+  try {
+    const where = req.query.sectionId ? { sectionId: req.query.sectionId } : {};
+    const passages = await QuizPassage.findAll({
+      where,
+      attributes: ['id', 'sectionId', 'title', 'startPosition', 'endPosition', 'isActive', 'updatedAt'],
+      include: [{ model: QuizQuestion, as: 'questions', attributes: ['id'] }],
+      order: [['sectionId', 'ASC'], ['startPosition', 'ASC']]
+    });
+    const data = passages.map((p) => {
+      const { questions, ...passage } = p.toJSON();
+      return { ...passage, questionCount: questions.length };
+    });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching passages:', error);
+    res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+  }
+};
+
+/** GET /api/admin/quiz/passages/:id — the passage with its questions in order */
+exports.getPassageById = async (req, res) => {
+  try {
+    const passage = await loadPassage(req.params.id);
+    if (!passage) return res.status(404).json({ success: false, message: 'Passage not found' });
+    res.status(200).json({ success: true, data: passage });
+  } catch (error) {
+    console.error('Error fetching passage:', error);
+    res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+  }
+};
+
+/** POST /api/admin/quiz/passages — { sectionId, title, text, startPosition, endPosition, isActive, questions[] } */
+exports.createPassage = async (req, res) => {
+  try {
+    await savePassage(req, res, null);
+  } catch (error) {
+    console.error('Error creating passage:', error);
+    res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+  }
+};
+
+/** PUT /api/admin/quiz/passages/:id — same body as POST; replaces the passage's questions */
+exports.updatePassage = async (req, res) => {
+  try {
+    const passage = await QuizPassage.findByPk(req.params.id);
+    if (!passage) return res.status(404).json({ success: false, message: 'Passage not found' });
+    await savePassage(req, res, passage);
+  } catch (error) {
+    console.error('Error updating passage:', error);
+    res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
+  }
+};
+
+/** DELETE /api/admin/quiz/passages/:id — its questions stay in the list, switched off */
+exports.deletePassage = async (req, res) => {
+  try {
+    const passage = await QuizPassage.findByPk(req.params.id);
+    if (!passage) return res.status(404).json({ success: false, message: 'Passage not found' });
+    await sequelize.transaction(async (transaction) => {
+      await QuizQuestion.update({ passageId: null, isActive: false }, { where: { passageId: passage.id }, transaction });
+      await passage.destroy({ transaction });
+    });
+    res.status(200).json({ success: true, message: 'Passage deleted' });
+  } catch (error) {
+    console.error('Error deleting passage:', error);
     res.status(500).json({ success: false, message: 'Internal server error', error: error.message });
   }
 };
