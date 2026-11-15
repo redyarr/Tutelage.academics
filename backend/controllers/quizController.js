@@ -3,9 +3,9 @@
 // ============================================================================
 // Handles public read-only endpoints for frontend quiz display
 
-const { QuizConfiguration, QuizSection, QuizQuestion } = require('../models');
+const { QuizConfiguration, QuizSection, QuizQuestion, QuizPassage } = require('../models');
 const { sendTestResultEmail } = require('../config/email');
-const { levelPlan } = require('../utils/quizLevels');
+const { arrangeSection } = require('../utils/quizLevels');
 
 /**
  * GET /api/quiz/config
@@ -79,20 +79,26 @@ exports.getPublicQuestions = async (req, res) => {
       const limit = section.questionCount || 0;
       if (limit === 0) continue;
 
-      const pick = (where, n) =>
+      // shortcut: loads the section's whole active bank and lays it out in JS (passages sit on fixed
+      // numbers); fine for hundreds of questions, move to SQL if a section grows to many thousands.
+      const [bank, passages] = await Promise.all([
         QuizQuestion.findAll({
-          where: { sectionId: section.id, isActive: true, ...where },
-          attributes: ['id', 'sectionId', 'level', 'text', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer'],
-          order: [[QuizQuestion.sequelize.fn('RANDOM')]],
-          limit: n
-        });
-
-      // A section with a level split gets exactly that many random questions per level, easy → hard;
-      // without one it takes `questionCount` random questions of any level.
-      const plan = levelPlan(section.levelDistribution);
-      const questions = plan.length
-        ? (await Promise.all(plan.map(([level, n]) => pick({ level }, n)))).flat()
-        : await pick({}, limit);
+          where: { sectionId: section.id, isActive: true },
+          attributes: ['id', 'sectionId', 'passageId', 'level', 'text', 'optionA', 'optionB', 'optionC', 'optionD', 'correctAnswer', 'displayOrder']
+        }),
+        QuizPassage.findAll({
+          where: { sectionId: section.id, isActive: true },
+          attributes: ['id', 'title', 'text', 'startPosition', 'endPosition']
+        })
+      ]);
+      const passageById = new Map(passages.map((p) => [p.id, p]));
+      const questions = arrangeSection({
+        questionCount: limit,
+        levelDistribution: section.levelDistribution,
+        passages,
+        // questions of an inactive passage are out, like inactive questions
+        questions: bank.filter((q) => !q.passageId || passageById.has(q.passageId))
+      });
 
       // Log warning if not enough questions
       if (questions.length < limit) {
@@ -101,6 +107,7 @@ exports.getPublicQuestions = async (req, res) => {
 
       // Add section info to each question
       questions.forEach(q => {
+        const passage = passageById.get(q.passageId);
         selectedQuestions.push({
           id: q.id,
           sectionId: q.sectionId,
@@ -108,7 +115,8 @@ exports.getPublicQuestions = async (req, res) => {
           level: q.level,
           text: q.text,
           options: [q.optionA, q.optionB, q.optionC, q.optionD],
-          correctAnswer: q.correctAnswer
+          correctAnswer: q.correctAnswer,
+          passage: passage ? { id: passage.id, title: passage.title, text: passage.text } : null
         });
       });
     }

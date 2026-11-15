@@ -19,7 +19,12 @@ const {
   getQuestionById,
   createQuestion,
   updateQuestion,
-  deleteQuestion
+  deleteQuestion,
+  getAllPassages,
+  getPassageById,
+  createPassage,
+  updatePassage,
+  deletePassage
 } = require('../controllers/adminQuizController');
 
 // ============================================================================
@@ -111,5 +116,15 @@ router.put('/questions/:id', updateQuestion);
  * Delete a question
  */
 router.delete('/questions/:id', deleteQuestion);
+
+// ============================================================================
+// PASSAGE ROUTES (reading texts shared by several questions)
+// ============================================================================
+
+router.get('/passages', getAllPassages);
+router.get('/passages/:id', getPassageById);
+router.post('/passages', createPassage);
+router.put('/passages/:id', updatePassage);
+router.delete('/passages/:id', deletePassage);
 
 module.exports = router;
