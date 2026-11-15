@@ -6,6 +6,11 @@
 // ============================================================================
 
 const { Audio, User, Tag, ResourceTag, ResourceAnalytics, ApprovalRequest, TaskPdf } = require('../models');
+const { TAG_TYPES, setResourceTags, getResourceTags, resourceIdsWithTags } = require('../utils/resourceTags');
+const TAG_TYPE = TAG_TYPES.Audio; // own key in resource_tags (see utils/resourceTags.js)
+const attachTags = (resourceId, tagNames) => setResourceTags(TAG_TYPE, resourceId, tagNames);
+const includeTagsFor = (resourceId) => getResourceTags(TAG_TYPE, resourceId);
+const getTagFilterIds = (query) => resourceIdsWithTags(TAG_TYPE, query);
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -30,30 +35,7 @@ function normalizeLevels(input) {
   return unique.length ? unique : null;
 }
 
-async function attachTags(resourceId, tagNames = []) {
-  if (!tagNames?.length) return;
-  const existing = await Tag.findAll({ where: { name: { [Op.in]: tagNames } } });
-  const existingNames = new Set(existing.map(t => t.name));
-  const toCreate = tagNames.filter(n => !existingNames.has(n)).map(name => ({ name, namespace: 'audio' }));
-  if (toCreate.length) await Tag.bulkCreate(toCreate);
-  const allTags = await Tag.findAll({ where: { name: { [Op.in]: tagNames } } });
-  const mappings = allTags.map(tag => ({ resourceType: 'audio', resourceId, tagId: tag.id }));
-  for (const m of mappings) {
-    const exists = await ResourceTag.findOne({ where: m });
-    if (!exists) await ResourceTag.create(m);
-  }
-}
 
-async function getTagFilterIds(tagQuery) {
-  if (!tagQuery) return null;
-  const names = Array.isArray(tagQuery) ? tagQuery : String(tagQuery).split(',').map(s => s.trim()).filter(Boolean);
-  if (!names.length) return null;
-  const tags = await Tag.findAll({ where: { name: { [Op.in]: names } } });
-  if (!tags.length) return [];
-  const tagIds = tags.map(t => t.id);
-  const mappings = await ResourceTag.findAll({ where: { resourceType: 'audio', tagId: { [Op.in]: tagIds } } });
-  return [...new Set(mappings.map(m => m.resourceId))];
-}
 
 async function ensureAnalytics(resourceId) {
   const [row] = await ResourceAnalytics.findOrCreate({
@@ -63,13 +45,6 @@ async function ensureAnalytics(resourceId) {
   return row;
 }
 
-async function includeTagsFor(resourceId) {
-  const rts = await ResourceTag.findAll({ where: { resourceType: 'audio', resourceId } });
-  if (!rts.length) return [];
-  const tagIds = rts.map(rt => rt.tagId);
-  const tags = await Tag.findAll({ where: { id: { [Op.in]: tagIds } } });
-  return tags.map(t => t.name);
-}
 
 /**
  * Create a new audio content
@@ -548,7 +523,7 @@ const updateAudio = async (req, res) => {
 
     if (tags !== undefined) {
       const tagNames = Array.isArray(tags) ? tags : String(tags).split(',').map(t => t.trim()).filter(Boolean);
-      await ResourceTag.destroy({ where: { resourceType: 'audio', resourceId: audio.id } });
+      await setResourceTags(TAG_TYPE, audio.id, []);
       if (tagNames.length) await attachTags(audio.id, tagNames);
     }
 
@@ -629,7 +604,7 @@ const deleteAudio = async (req, res) => {
       });
     }
 
-    await ResourceTag.destroy({ where: { resourceType: 'audio', resourceId: id } });
+    await setResourceTags(TAG_TYPE, id, []);
     await ResourceAnalytics.destroy({ where: { resourceType: 'audio', resourceId: id } });
     await audio.destroy();
 

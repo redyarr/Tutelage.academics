@@ -7,6 +7,7 @@
 // ============================================================================
 
 const express = require('express');
+const { validateTags } = require('../middlewares/validateTags');
 const router = express.Router();
 const {
   createBlog,
@@ -63,14 +64,14 @@ router.get('/category/:category', getBlogsByCategory);
  * Create a new blog post
  * Requires authentication
  */
-router.post('/', isAuthenticated, pdfUpload, createBlog);
+router.post('/', isAuthenticated, pdfUpload, validateTags, createBlog);
 
 /**
  * PUT /api/blogs/:id
  * Update a blog post
  * Requires authentication (author or admin only)
  */
-router.put('/:id', isAuthenticated, pdfUpload, updateBlog);
+router.put('/:id', isAuthenticated, pdfUpload, validateTags, updateBlog);
 
 /**
  * DELETE /api/blogs/:id
@@ -88,14 +89,14 @@ router.delete('/:id', isAuthenticated, deleteBlog);
  * Create a new blog post (admin only)
  * Requires admin authentication
  */
-router.post('/admin', isAuthenticated, adminAuth, pdfUpload, createBlog);
+router.post('/admin', isAuthenticated, adminAuth, pdfUpload, validateTags, createBlog);
 
 /**
  * PUT /api/blogs/admin/:id
  * Update any blog post (admin only)
  * Requires admin authentication
  */
-router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, updateBlog);
+router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, validateTags, updateBlog);
 
 /**
  * DELETE /api/blogs/admin/:id

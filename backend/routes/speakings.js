@@ -5,6 +5,7 @@
 // ============================================================================
 
 const express = require('express');
+const { validateTags } = require('../middlewares/validateTags');
 const router = express.Router();
 const {
   createSpeaking,
@@ -59,13 +60,13 @@ router.get('/:id', getSpeakingById);
  * POST /api/speakings
  * Create a new speaking item
  */
-router.post('/', isAuthenticated, pdfUpload, createSpeaking);
+router.post('/', isAuthenticated, pdfUpload, validateTags, createSpeaking);
 
 /**
  * PUT /api/speakings/:id
  * Update speaking item (author/admin)
  */
-router.put('/:id', isAuthenticated, pdfUpload, updateSpeaking);
+router.put('/:id', isAuthenticated, pdfUpload, validateTags, updateSpeaking);
 
 /**
  * DELETE /api/speakings/:id
@@ -81,13 +82,13 @@ router.delete('/:id', isAuthenticated, deleteSpeaking);
  * POST /api/speakings/admin
  * Admin-only creation
  */
-router.post('/admin', isAuthenticated, adminAuth, pdfUpload, createSpeaking);
+router.post('/admin', isAuthenticated, adminAuth, pdfUpload, validateTags, createSpeaking);
 
 /**
  * PUT /api/speakings/admin/:id
  * Admin-only update
  */
-router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, updateSpeaking);
+router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, validateTags, updateSpeaking);
 
 /**
  * DELETE /api/speakings/admin/:id

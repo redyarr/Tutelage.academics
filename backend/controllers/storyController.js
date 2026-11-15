@@ -4,6 +4,10 @@
 // Handles CRUD operations, search/filter/sort for stories.
 
 const { Story, User, ResourceTag, Tag, ResourceAnalytics, Sequelize, ApprovalRequest, TaskPdf } = require('../models');
+const { TAG_TYPES, setResourceTags, getResourceTags, resourceIdsWithTags } = require('../utils/resourceTags');
+const TAG_TYPE = TAG_TYPES.Story; // own key in resource_tags (see utils/resourceTags.js)
+const attachTags = (resourceId, tagNames) => setResourceTags(TAG_TYPE, resourceId, tagNames);
+const getTagFilterIds = (query) => resourceIdsWithTags(TAG_TYPE, query);
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -27,34 +31,7 @@ function normalizeLevels(input) {
   return unique.length ? unique : null;
 }
 
-async function attachTags(resourceId, tagNames = []) {
-  if (!tagNames?.length) return;
-  // Ensure tags exist
-  const existing = await Tag.findAll({ where: { name: { [Op.in]: tagNames } } });
-  const existingNames = new Set(existing.map(t => t.name));
-  const toCreate = tagNames.filter(n => !existingNames.has(n)).map(name => ({ name, namespace: 'story' }));
-  if (toCreate.length) {
-    await Tag.bulkCreate(toCreate);
-  }
-  const allTags = await Tag.findAll({ where: { name: { [Op.in]: tagNames } } });
-  const mappings = allTags.map(tag => ({ resourceType: 'story', resourceId, tagId: tag.id }));
-  // Upsert-like: insert missing, ignore duplicates
-  for (const m of mappings) {
-    const exists = await ResourceTag.findOne({ where: m });
-    if (!exists) await ResourceTag.create(m);
-  }
-}
 
-async function getTagFilterIds(tagQuery) {
-  if (!tagQuery) return null;
-  const names = Array.isArray(tagQuery) ? tagQuery : String(tagQuery).split(',').map(s => s.trim()).filter(Boolean);
-  if (!names.length) return null;
-  const tags = await Tag.findAll({ where: { name: { [Op.in]: names } } });
-  if (!tags.length) return [];
-  const tagIds = tags.map(t => t.id);
-  const mappings = await ResourceTag.findAll({ where: { resourceType: 'story', tagId: { [Op.in]: tagIds } } });
-  return [...new Set(mappings.map(m => m.resourceId))];
-}
 
 async function ensureAnalytics(resourceId) {
   const [row] = await ResourceAnalytics.findOrCreate({
@@ -209,12 +186,18 @@ exports.getAllStories = async (req, res) => {
         rows.sort((a,b) => (map.get(b.id) || 0) - (map.get(a.id) || 0));
       }
 
+      // Attach tags for each story
+      const enriched = await Promise.all(rows.map(async (row) => {
+        const tagNames = await getResourceTags(TAG_TYPE, row.id);
+        return { ...row.toJSON(), tags: tagNames };
+      }));
+
       const totalPages = Math.ceil(count / itemsPerPage);
       return res.status(200).json({ 
         success: true, 
         message: 'Stories fetched successfully',
         data: { 
-          stories: rows, 
+          stories: enriched, 
           pagination: { 
             currentPage, 
             totalPages, 
@@ -254,8 +237,15 @@ exports.getAllStories = async (req, res) => {
 
     const hasMore = stories.length > parseInt(limit);
     const items = hasMore ? stories.slice(0, parseInt(limit)) : stories;
-    const nextCursor = items.length > 0 ? items[items.length - 1].id : null;
-    res.status(200).json({ success: true, data: { stories: items, pagination: { nextCursor, hasMore, itemsPerPage: parseInt(limit), totalItemsReturned: items.length } } });
+
+    // Attach tags for each story
+    const enriched = await Promise.all(items.map(async (row) => {
+      const tagNames = await getResourceTags(TAG_TYPE, row.id);
+      return { ...row.toJSON(), tags: tagNames };
+    }));
+
+    const nextCursor = enriched.length > 0 ? enriched[enriched.length - 1].id : null;
+    res.status(200).json({ success: true, data: { stories: enriched, pagination: { nextCursor, hasMore, itemsPerPage: parseInt(limit), totalItemsReturned: enriched.length } } });
   } catch (err) {
     console.error('Error fetching stories:', err);
     res.status(500).json({ success: false, message: 'Internal server error', error: err.message });
@@ -278,8 +268,7 @@ exports.getStoryById = async (req, res) => {
     console.log("this is tasks: ", tasks);
     
     // Attach tag names
-    const mappings = await ResourceTag.findAll({ where: { resourceType: 'story', resourceId: story.id }, include: [{ model: Tag, as: 'tag' }] });
-    const tagNames = mappings.map(m => m.tag?.name).filter(Boolean);
+    const tagNames = await getResourceTags(TAG_TYPE, story.id);
     res.status(200).json({ success: true, message: "Story Fetched Successfully" , data: { ...story.toJSON(), tags: tagNames, tasks } });
   } catch (err) {
     console.error('Error fetching story:', err);
@@ -413,11 +402,8 @@ exports.updateStory = async (req, res) => {
       }
     }
     
-    if (tags) {
-      // Reset tags then attach
-      await ResourceTag.destroy({ where: { resourceType: 'story', resourceId: story.id } });
-      await attachTags(story.id, Array.isArray(tags) ? tags : String(tags).split(',').map(s => s.trim()).filter(Boolean));
-    }
+    // tags sent (even "" = cleared) replace the list; not sent keeps it
+    if (tags !== undefined) await attachTags(story.id, tags);
     const updated = await Story.findByPk(id, { include: [{ model: User, as: 'author', attributes: ['id', 'name', 'email'] }] });
     res.status(200).json({ success: true, message: 'Story updated successfully', data: updated });
   } catch (err) {
@@ -460,7 +446,7 @@ exports.deleteStory = async (req, res) => {
       });
     }
     if (role !== 'ADMIN') return res.status(403).json({ success: false, message: 'You can only delete your own stories' });
-    await ResourceTag.destroy({ where: { resourceType: 'story', resourceId: id } });
+    await setResourceTags(TAG_TYPE, id, []);
     await ResourceAnalytics.destroy({ where: { resourceType: 'story', resourceId: id } });
     await story.destroy();
     res.status(200).json({ success: true, message: 'Story deleted successfully' });

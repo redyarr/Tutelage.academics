@@ -6,6 +6,7 @@
 // ============================================================================
 
 const express = require('express');
+const { validateTags } = require('../middlewares/validateTags');
 const router = express.Router();
 // PDF upload via RestPDF middleware
 const { pdfUpload } = require('../middlewares/pdfUpload');
@@ -71,13 +72,13 @@ router.get('/search/title', searchVideosByTitle);
  * POST /api/videos
  * Create a new video content with optional PDF uploads (via RestPDF)
  */
-router.post('/', isAuthenticated, pdfUpload, createVideo);
+router.post('/', isAuthenticated, pdfUpload, validateTags, createVideo);
 
 /**
  * PUT /api/videos/:id
  * Update a video content with optional PDF uploads (via RestPDF)
  */
-router.put('/:id', isAuthenticated, pdfUpload, updateVideo);
+router.put('/:id', isAuthenticated, pdfUpload, validateTags, updateVideo);
 
 /**
  * DELETE /api/videos/:id
@@ -94,13 +95,13 @@ router.delete('/:id', isAuthenticated, deleteVideo);
  * POST /api/videos/admin
  * Admin-only video creation (with optional PDF uploads via RestPDF)
  */
-router.post('/admin', isAuthenticated, adminAuth, pdfUpload, createVideo);
+router.post('/admin', isAuthenticated, adminAuth, pdfUpload, validateTags, createVideo);
 
 /**
  * PUT /api/videos/admin/:id
  * Admin-only video update (with optional PDF uploads via RestPDF)
  */
-router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, updateVideo);
+router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, validateTags, updateVideo);
 
 /**
  * DELETE /api/videos/admin/:id

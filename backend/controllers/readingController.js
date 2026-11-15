@@ -6,6 +6,10 @@
 // ============================================================================
 
 const { Reading, User, Tag, ResourceTag, ApprovalRequest, TaskPdf } = require('../models');
+const { TAG_TYPES, setResourceTags, getResourceTags, resourceIdsWithTags } = require('../utils/resourceTags');
+const TAG_TYPE = TAG_TYPES.Reading; // own key in resource_tags (see utils/resourceTags.js)
+const attachTags = (resourceId, tagNames) => setResourceTags(TAG_TYPE, resourceId, tagNames);
+const includeTagsFor = (resourceId) => getResourceTags(TAG_TYPE, resourceId);
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -40,31 +44,7 @@ function normalizeTags(input) {
   return unique.length ? unique : null;
 }
 
-// Join-table tag helpers for Reading resources
-async function attachTags(resourceId, tagNames = []) {
-  if (!Array.isArray(tagNames) || !tagNames.length) return;
-  const trimmed = tagNames.map(t => String(t).trim()).filter(Boolean);
-  const existing = await Tag.findAll({ where: { name: { [Op.in]: trimmed } } });
-  const existingMap = new Map(existing.map(t => [t.name, t.id]));
-  const toCreate = trimmed.filter(n => !existingMap.has(n)).map(n => ({ name: n, namespace: 'reading' }));
-  if (toCreate.length) {
-    const created = await Tag.bulkCreate(toCreate, { returning: true });
-    created.forEach(t => existingMap.set(t.name, t.id));
-  }
-  const tagIds = trimmed.map(n => existingMap.get(n)).filter(Boolean);
-  await ResourceTag.destroy({ where: { resourceType: 'reading', resourceId } });
-  if (tagIds.length) {
-    await ResourceTag.bulkCreate(tagIds.map(tagId => ({ resourceType: 'reading', resourceId, tagId })));
-  }
-}
 
-async function includeTagsFor(resourceId) {
-  const rts = await ResourceTag.findAll({ where: { resourceType: 'reading', resourceId } });
-  if (!rts.length) return [];
-  const tagIds = rts.map(rt => rt.tagId);
-  const tags = await Tag.findAll({ where: { id: { [Op.in]: tagIds } } });
-  return tags.map(t => t.name);
-}
 
 /**
  * Create a new reading content
@@ -448,7 +428,7 @@ const updateReading = async (req, res) => {
 
     // Sync join-table tags
     if (tagNames !== null) {
-      await ResourceTag.destroy({ where: { resourceType: 'reading', resourceId: id } });
+      await setResourceTags(TAG_TYPE, id, []);
       if (tagNames.length) await attachTags(reading.id, tagNames);
     }
 
@@ -514,7 +494,7 @@ const deleteReading = async (req, res) => {
     }
 
     // Clean up join-table tag mappings
-    await ResourceTag.destroy({ where: { resourceType: 'reading', resourceId: id } });
+    await setResourceTags(TAG_TYPE, id, []);
     await reading.destroy();
     res.status(200).json({ success: true, message: 'Reading content deleted successfully' });
   } catch (error) {

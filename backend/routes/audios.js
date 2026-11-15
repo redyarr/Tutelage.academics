@@ -6,6 +6,7 @@
 // ============================================================================
 
 const express = require('express');
+const { validateTags } = require('../middlewares/validateTags');
 const router = express.Router();
 const {
   createAudio,
@@ -60,14 +61,14 @@ router.get('/search/transcript', searchAudioByTranscript);
  * Create a new audio content
  * Requires authentication
  */
-router.post('/', isAuthenticated, pdfUpload, createAudio);
+router.post('/', isAuthenticated, pdfUpload, validateTags, createAudio);
 
 /**
  * PUT /api/audios/:id
  * Update an audio content
  * Requires authentication (author or admin only)
  */
-router.put('/:id', isAuthenticated, pdfUpload, updateAudio);
+router.put('/:id', isAuthenticated, pdfUpload, validateTags, updateAudio);
 
 /**
  * DELETE /api/audios/:id
@@ -84,13 +85,13 @@ router.delete('/:id', isAuthenticated, deleteAudio);
  * POST /api/audios/admin
  * Admin-only audio creation (if needed for special cases)
  */
-router.post('/admin', isAuthenticated, adminAuth, pdfUpload, createAudio);
+router.post('/admin', isAuthenticated, adminAuth, pdfUpload, validateTags, createAudio);
 
 /**
  * PUT /api/audios/admin/:id
  * Admin-only audio update (can update any audio)
  */
-router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, updateAudio);
+router.put('/admin/:id', isAuthenticated, adminAuth, pdfUpload, validateTags, updateAudio);
 
 /**
  * DELETE /api/audios/admin/:id

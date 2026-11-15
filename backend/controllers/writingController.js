@@ -5,6 +5,10 @@
 // ============================================================================
 
 const { Writing, User, Tag, ResourceTag, ApprovalRequest, TaskPdf } = require('../models');
+const { TAG_TYPES, setResourceTags, getResourceTags, resourceIdsWithTags } = require('../utils/resourceTags');
+const TAG_TYPE = TAG_TYPES.Writing; // own key in resource_tags (see utils/resourceTags.js)
+const attachTags = (resourceId, tagNames) => setResourceTags(TAG_TYPE, resourceId, tagNames);
+const includeTagsFor = (resourceId) => getResourceTags(TAG_TYPE, resourceId);
 const { sendApprovalRequestNotification } = require('../config/email');
 const { Op } = require('sequelize');
 const { getTasks } = require('../scripts/fetchTasks');
@@ -39,31 +43,7 @@ function normalizeTags(input) {
   return unique.length ? unique : null;
 }
 
-// Join-table tag helpers for Writing resources
-async function attachTags(resourceId, tagNames = []) {
-  if (!Array.isArray(tagNames) || !tagNames.length) return;
-  const trimmed = tagNames.map(t => String(t).trim()).filter(Boolean);
-  const existing = await Tag.findAll({ where: { name: { [Op.in]: trimmed } } });
-  const existingMap = new Map(existing.map(t => [t.name, t.id]));
-  const toCreate = trimmed.filter(n => !existingMap.has(n)).map(n => ({ name: n, namespace: 'writing' }));
-  if (toCreate.length) {
-    const created = await Tag.bulkCreate(toCreate, { returning: true });
-    created.forEach(t => existingMap.set(t.name, t.id));
-  }
-  const tagIds = trimmed.map(n => existingMap.get(n)).filter(Boolean);
-  await ResourceTag.destroy({ where: { resourceType: 'writing', resourceId } });
-  if (tagIds.length) {
-    await ResourceTag.bulkCreate(tagIds.map(tagId => ({ resourceType: 'writing', resourceId, tagId })));
-  }
-}
 
-async function includeTagsFor(resourceId) {
-  const rts = await ResourceTag.findAll({ where: { resourceType: 'writing', resourceId } });
-  if (!rts.length) return [];
-  const tagIds = rts.map(rt => rt.tagId);
-  const tags = await Tag.findAll({ where: { id: { [Op.in]: tagIds } } });
-  return tags.map(t => t.name);
-}
 
 /**
  * Create a new writing content
@@ -449,7 +429,7 @@ const updateWriting = async (req, res) => {
 
     // Sync join-table tags
     if (tagNames !== null) {
-      await ResourceTag.destroy({ where: { resourceType: 'writing', resourceId: id } });
+      await setResourceTags(TAG_TYPE, id, []);
       if (tagNames.length) await attachTags(writing.id, tagNames);
     }
 
@@ -513,7 +493,7 @@ const deleteWriting = async (req, res) => {
       return res.status(403).json({ success: false, message: 'You can only delete your own writing content' });
     }
     // Clean up join-table tag mappings
-    await ResourceTag.destroy({ where: { resourceType: 'writing', resourceId: id } });
+    await setResourceTags(TAG_TYPE, id, []);
     await writing.destroy();
     res.status(200).json({ success: true, message: 'Writing content deleted successfully' });
   } catch (error) {

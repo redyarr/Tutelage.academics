@@ -14,9 +14,9 @@ module.exports = (sequelize, DataTypes) => {
         comment: 'Unique identifier for resource-tag mapping'
       },
       resourceType: {
-        type: DataTypes.ENUM('video', 'audio', 'story', 'speaking', 'writing', 'reading'),
+        type: DataTypes.ENUM('video', 'audio', 'story', 'speaking', 'writing', 'reading', 'blog', 'esl_video', 'esl_audio'),
         allowNull: false,
-        comment: 'Resource type this tag applies to'
+        comment: 'Which content table resourceId points into; one key per table (utils/resourceTags.js TAG_TYPES)'
       },
       resourceId: {
         type: DataTypes.INTEGER.UNSIGNED,
