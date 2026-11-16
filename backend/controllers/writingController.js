@@ -50,7 +50,7 @@ function normalizeTags(input) {
  */
 const createWriting = async (req, res) => {
   try {
-    const { title, content, description, discription, pdf, level, imageUrl, imageurl, tags } = req.body;
+    const { title, content, description, discription, pdf, level, imageUrl, imageurl, contentImageUrl, tags } = req.body;
     const createdBy = req.user.id;
     const role = req.user.role;
 
@@ -78,6 +78,7 @@ const createWriting = async (req, res) => {
         pdf,
         taskPdfs: Array.isArray(req.body?.taskPdfs) ? req.body.taskPdfs : [],
         imageUrl: (imageUrl ?? imageurl ?? null),
+        contentImageUrl: contentImageUrl ?? null,
         level: normalizedLevels,
         tags: tagNames
       };
@@ -114,6 +115,7 @@ const createWriting = async (req, res) => {
       description: (description ?? discription ?? null),
       pdf,
       imageUrl: (imageUrl ?? imageurl ?? null),
+      contentImageUrl: contentImageUrl ?? null,
       level: normalizedLevels,
       tags: tagNames.length ? tagNames : null, // Store parsed array in DB
       createdBy
@@ -316,8 +318,7 @@ const getWritingById = async (req, res) => {
 const updateWriting = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, content, description, discription, pdf, level, imageUrl, contentImageUrl, tags, deletedTaskPdfIds } = req.body;
-    console.log(contentImageUrl)
+    const { title, content, description, discription, pdf, level, imageUrl, imageurl, contentImageUrl, tags, deletedTaskPdfIds } = req.body;
     const writing = await Writing.findByPk(id);
     if (!writing) {
       return res.status(404).json({ success: false, message: 'Writing content not found' });
@@ -406,7 +407,7 @@ const updateWriting = async (req, res) => {
       content: content ?? writing.content,
       description: (description ?? discription ?? writing.description),
       pdf: pdf ?? writing.pdf,
-      imageUrl: (imageUrl ?? imageUrl ?? writing.imageUrl),
+      imageUrl: (imageUrl ?? imageurl ?? writing.imageUrl),
       contentImageUrl: contentImageUrl ?? writing.contentImageUrl,
       level: normalizedLevelUpdate ?? writing.level,
       tags: tagNames !== null ? (tagNames.length ? tagNames : null) : writing.tags // Store parsed array
