@@ -50,7 +50,7 @@ function pickUpdateFields(resourceType, payload) {
     Video: ['title', 'videoRef', 'description', 'pdf', 'taskPdf', 'level'],
     Audio: ['title', 'description', 'transcript', 'audioRef', 'pdf', 'taskPdf', 'imageUrl', 'level'],
     Reading: ['title', 'content', 'description', 'pdf', 'taskPdf', 'imageUrl', 'level', 'tags'],
-    Writing: ['title', 'content', 'description', 'pdf', 'taskPdf', 'imageUrl', 'level', 'tags'],
+    Writing: ['title', 'content', 'description', 'pdf', 'taskPdf', 'imageUrl', 'contentImageUrl', 'level', 'tags'],
     Speaking: ['title', 'imageUrl', 'description', 'content', 'transcript', 'videoRef', 'pdf', 'taskPdf', 'level', 'tags'],
     Story: ['title', 'imageUrl', 'description', 'contentText', 'audioRef', 'pdf', 'taskPdf', 'wordCount', 'level', 'tags'],
     EslAudio: ['title', 'imageUrl', 'description', 'transcript', 'audioRef', 'pdf', 'taskPdf', 'level'],
