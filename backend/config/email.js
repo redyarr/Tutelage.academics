@@ -10,8 +10,19 @@ const fs = require('fs');
 const FRONTEND_URL = process.env.FRONTEND_URL;
 const FROM_EMAIL = process.env.FROM_EMAIL;
 
-// Initialize Resend with API key
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Resend with API key. `new Resend()` throws without a key, which used to crash the
+// whole server on boot (e.g. a local .env without email settings); without one, emails are
+// skipped with a log line and everything else keeps working.
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : {
+      emails: {
+        send: async ({ to, subject }) => {
+          console.warn(`📧 Email skipped (RESEND_API_KEY not set): "${subject}" to ${to}`);
+          return { data: null, error: null, skipped: true };
+        },
+      },
+    };
 
 // Verify Resend is configured
 if (!process.env.RESEND_API_KEY) {
