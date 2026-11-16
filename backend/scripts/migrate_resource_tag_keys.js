@@ -55,6 +55,21 @@ async function main() {
     }
   }
 
+  // Ids in BOTH readings and blogs: readings keep their real tags in readings.tags, so a shared
+  // 'reading' row whose tag is not in that column was written by the blog with the same id.
+  const mixed = await q(`
+    SELECT rt.id, rt."resourceId", t.name FROM resource_tags rt
+    JOIN tags t ON t.id = rt."tagId"
+    JOIN readings r ON r.id = rt."resourceId"
+    WHERE rt."resourceType" = 'reading'
+      AND EXISTS (SELECT 1 FROM blogs b WHERE b.id = rt."resourceId")
+      AND NOT (lower(t.name) = ANY (SELECT lower(x) FROM unnest(coalesce(r.tags, '{}')) x))`);
+  console.log(`• reading: ${mixed.length} row(s) on ids shared with blogs are not in readings.tags → '${TAG_TYPES.Blog}'` +
+    (mixed.length ? ` (${mixed.map((m) => `#${m.resourceId} "${m.name}"`).join(', ')})` : ''));
+  if (APPLY && mixed.length) {
+    await q(`UPDATE resource_tags SET "resourceType" = '${TAG_TYPES.Blog}' WHERE id IN (${mixed.map((m) => m.id).join(',')})`);
+  }
+
   for (const [table, key] of COLUMN_TAGS) {
     const rows = await q(`
       SELECT x.id, x.tags FROM ${table} x
